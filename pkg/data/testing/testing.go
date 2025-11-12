@@ -1,0 +1,872 @@
+package testing
+
+import (
+	"context"
+	"reflect"
+	"testing"
+
+	"github.com/activatedio/datainfra/pkg/data"
+	"github.com/activatedio/datainfra/pkg/symbols"
+	"github.com/google/uuid"
+	"go.uber.org/fx"
+)
+
+const (
+/*
+   TODO - profiles are provided by the runner
+   ProfileGormPsql                 = "gorm_psql"
+   ProfileGormSqlite               = "gorm_sqlite"
+   ProfileGocql                    = "gocql"
+   ProfileGormPsqlStaticMetadata   = "gorm_psql_static_metadata"
+   ProfileGormSqliteStaticMetadata = "gorm_sqlite_static_metadata"
+   ProfileGocqlStaticMetadata      = "gocql_static_metadata"
+*/
+)
+
+func RandomLabels() data.Labels {
+	return map[string]string{
+		// TODO - better to have another uuid provider
+		"a1": uuid.New().String(),
+		"a2": uuid.New().String(),
+	}
+}
+
+// All test profiles apply to repositories which are present in all modes, including static metadata
+/*
+func GetAllTestProfiles() []string {
+
+	switch coretesting.GetTestProfile("../.test-profile") {
+	case coretesting.TestProfileSlim:
+		return []string{
+			ProfileGormPsql, ProfileGormSqlite,
+			ProfileGormPsqlStaticMetadata, ProfileGormSqliteStaticMetadata,
+		}
+	case coretesting.TestProfileStandard:
+		return []string{
+			ProfileGormPsql, ProfileGormSqlite, ProfileGocql,
+			ProfileGormPsqlStaticMetadata, ProfileGormSqliteStaticMetadata, ProfileGocqlStaticMetadata,
+		}
+	default:
+		panic("invalid profile")
+	}
+
+}
+*/
+
+/*
+func GetMainTestProfiles() []string {
+
+	switch coretesting.GetTestProfile("../.test-profile") {
+	case coretesting.TestProfileSlim:
+		return []string{ProfileGormPsql, ProfileGormSqlite}
+	case coretesting.TestProfileStandard:
+		return []string{ProfileGormPsql, ProfileGormSqlite, ProfileGocql}
+	default:
+		panic("invalid profile")
+	}
+}
+
+*/
+
+/*
+var (
+	MigrateSync sync.Mutex
+
+	GormPsqlMigrated       bool
+	GormLitePsqlMigrated   bool
+	GormSqliteMigrated     bool
+	GormLiteSqliteMigrated bool
+	GocqlMigrated          bool
+	GocqlLiteMigrated      bool
+
+	gocqlConfig          *runtime.GocqlConfig
+	gocqlOwnerConfig     *runtime.GocqlConfig
+	gocqlLiteConfig      *runtime.GocqlConfig
+	gormConfigPsql       *runtime.GormConfig
+	gormConfigPsqlLite   *runtime.GormConfig
+	gormConfigSqlite     *runtime.GormConfig
+	gormConfigSqliteLite *runtime.GormConfig
+)
+
+*/
+
+// TODO - consider running a setup of the databases using the setup classes before each test
+/*
+func TestMain(m *testing.M) {
+
+	awid.NextID = awid.NewStandaloneIDFunc(0)
+
+	crypto.Check(os.Setenv("DEV_LOGGING", "true"))
+	logging.ConfigureDefault(os.Stdout)
+
+	repository.SetupStubHandlers()
+
+	vs := setupAllDatabases()
+	ret := m.Run()
+	teardownAllDatabases(vs)
+	os.Exit(ret)
+
+}
+
+*/
+
+/*
+func setupAllDatabases() []cs.Config {
+
+	setupGormPsqlOwnerConfig := func(c cs.Config) {
+		c.AddSource(sources.FromValue(runtime.PrefixRepositoryGormOwner, &runtime.GormConfig{
+			Dialect:          "psql",
+			Host:             "127.0.0.1",
+			Port:             5432,
+			Username:         "postgres",
+			Password:         "supersecret",
+			Name:             "postgres",
+			EnableSQLLogging: true,
+		}))
+	}
+
+	setupGocqlIndex := func(c cs.Config, name string) {
+		c.AddSource(sources.FromValue(runtime.PrefixIndex, &runtime.IndexConfig{
+			Prefix: name,
+		}))
+		c.AddSource(sources.FromValue(runtime.PrefixRepositoryElasticSearch, &runtime.ElasticsearchConfig{
+			ElasticSearchEndpoint: "http://127.0.0.1:9200",
+		}))
+	}
+
+	setupRepositoryMode := func(c cs.Config, mode string) {
+		c.AddSource(sources.FromValue(runtime.PrefixRepositoryCommon, &runtime.RepositoryConfig{
+			PrimaryMode:  mode,
+			MetadataMode: mode,
+		}))
+	}
+
+	suffix := fmt.Sprintf("%d_%d", time.Now().UnixMilli(), os.Getpid())
+
+	var res []cs.Config
+
+	gocqlKeyspace := fmt.Sprintf("unit_core_%s", suffix)
+	gocqlLiteKeyspace := fmt.Sprintf("%s_lite", gocqlKeyspace)
+
+	gormPsqlDBName := fmt.Sprintf("test_%s", suffix)
+	gormPsqlLiteDBName := fmt.Sprintf("%s_lite", gormPsqlDBName)
+	gormSqliteDBName := fmt.Sprintf("/tmp/test-%s.db", suffix)
+	gormSqliteLiteDBName := fmt.Sprintf("/tmp/test-%s-lite.db", suffix)
+
+	for _, p := range GetMainTestProfiles() {
+
+		switch p {
+		case ProfileGormPsql:
+
+			gormConfigPsql = &runtime.GormConfig{
+
+				Dialect:          "psql",
+				Host:             "127.0.0.1",
+				Port:             5432,
+				Username:         gormPsqlDBName,
+				Password:         gormPsqlDBName,
+				Name:             gormPsqlDBName,
+				EnableSQLLogging: true,
+			}
+			gormConfigPsqlLite = &runtime.GormConfig{
+
+				Dialect:          "psql",
+				Host:             "127.0.0.1",
+				Port:             5432,
+				Username:         gormPsqlLiteDBName,
+				Password:         gormPsqlLiteDBName,
+				Name:             gormPsqlLiteDBName,
+				EnableSQLLogging: true,
+			}
+
+			var c cs.Config
+
+			c = cs.New()
+			setupGormPsqlOwnerConfig(c)
+			setupRepositoryMode(c, repository.ModeGorm)
+			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGormApp, gormConfigPsql))
+
+			check.MustNoError(setup.NewSetup(c).Setup(setup.Params{
+				FailOnExisting: true,
+			}))
+			res = append(res, c)
+
+			c = cs.New()
+			setupGormPsqlOwnerConfig(c)
+			setupRepositoryMode(c, repository.ModeGorm)
+			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGormApp, gormConfigPsqlLite))
+
+			check.MustNoError(setup.NewSetup(c).Setup(setup.Params{
+				FailOnExisting: true,
+			}))
+			res = append(res, c)
+
+		case ProfileGormSqlite:
+
+			gormConfigSqlite = &runtime.GormConfig{
+				Dialect:          "sqlite",
+				Name:             gormSqliteDBName,
+				EnableSQLLogging: true,
+			}
+			gormConfigSqliteLite = &runtime.GormConfig{
+
+				Dialect:          "sqlite",
+				Name:             gormSqliteLiteDBName,
+				EnableSQLLogging: true,
+			}
+
+			// TODO - nothing needs to be done except perhaps to cleanup the temp files
+
+		case ProfileGocql:
+
+			gocqlOwnerConfig = &runtime.GocqlConfig{
+				Hosts:            "127.0.0.1:9142",
+				TLS:              true,
+				TLSKeyPath:       "./gocql/testcerts/client-cassandra-key.pem",
+				TLSCertPath:      "./gocql/testcerts/client-cassandra.pem",
+				TLSCAPath:        "./gocql/testcerts/root.pem",
+				EnableTracing:    false,
+				EnableCqlTracing: true,
+			}
+
+			gocqlConfig = &runtime.GocqlConfig{
+				Hosts:            "127.0.0.1:9142",
+				Keyspace:         gocqlKeyspace,
+				TLS:              true,
+				TLSKeyPath:       "./gocql/testcerts/client-app-key.pem",
+				TLSCertPath:      "./gocql/testcerts/client-app.pem",
+				TLSCAPath:        "./gocql/testcerts/root.pem",
+				EnableTracing:    false,
+				EnableCqlTracing: true,
+			}
+
+			gocqlLiteConfig = &runtime.GocqlConfig{
+				Hosts:            "127.0.0.1:9142",
+				Keyspace:         gocqlLiteKeyspace,
+				TLS:              true,
+				TLSKeyPath:       "./gocql/testcerts/client-app-key.pem",
+				TLSCertPath:      "./gocql/testcerts/client-app.pem",
+				TLSCAPath:        "./gocql/testcerts/root.pem",
+				EnableTracing:    false,
+				EnableCqlTracing: true,
+			}
+
+			var c cs.Config
+
+			c = cs.New()
+			setupRepositoryMode(c, repository.ModeGocql)
+			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGocqlOwner, gocqlOwnerConfig))
+			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGocqlApp, gocqlConfig))
+			setupGocqlIndex(c, gocqlConfig.Keyspace)
+
+			crypto.Check(setup.NewSetup(c).Setup(setup.Params{
+				FailOnExisting: true,
+			}))
+			res = append(res, c)
+
+			c = cs.New()
+			setupRepositoryMode(c, repository.ModeGocql)
+			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGocqlOwner, gocqlOwnerConfig))
+			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGocqlApp, gocqlLiteConfig))
+			setupGocqlIndex(c, gocqlLiteConfig.Keyspace)
+
+			crypto.Check(setup.NewSetup(c).Setup(setup.Params{
+				FailOnExisting: true,
+			}))
+			res = append(res, c)
+
+		}
+
+	}
+
+	return res
+}
+
+func teardownAllDatabases(cs []cs.Config) {
+
+	for _, v := range cs {
+		crypto.Check(setup.NewSetup(v).Teardown())
+	}
+}
+
+*/
+
+type Done chan bool
+
+func NewDone() Done {
+	return make(chan bool, 1)
+}
+
+func (d Done) Done() {
+	d <- true
+}
+
+/*
+func Run(t *testing.T, profiles []string, callback func(t *testing.T, ctx context.Context, profile string), opts ...fx.Option) {
+
+	for _, profile := range profiles {
+		t.Run(profile, func(t *testing.T) {
+
+			var repositoryMode string
+			var metadataRepositoryMode string
+			var testSource func() symbols.Symbols
+
+			switch profile {
+			case ProfileGormPsql:
+				repositoryMode = repository.ModeGorm
+				metadataRepositoryMode = repository.ModeGorm
+				testSource = testdata.SourceMain
+			case ProfileGormSqlite:
+				repositoryMode = repository.ModeGorm
+				metadataRepositoryMode = repository.ModeGorm
+				testSource = testdata.SourceMain
+			case ProfileGocql:
+				repositoryMode = repository.ModeGocql
+				metadataRepositoryMode = repository.ModeGocql
+				testSource = testdata.SourceMain
+			case ProfileGormPsqlStaticMetadata:
+				repositoryMode = repository.ModeGorm
+				metadataRepositoryMode = repository.ModeStatic
+				testSource = testdata.SourceMainStaticMetadata
+			case ProfileGormSqliteStaticMetadata:
+				repositoryMode = repository.ModeGorm
+				metadataRepositoryMode = repository.ModeStatic
+				testSource = testdata.SourceMainStaticMetadata
+			case ProfileGocqlStaticMetadata:
+				repositoryMode = repository.ModeGocql
+				metadataRepositoryMode = repository.ModeStatic
+				testSource = testdata.SourceMainStaticMetadata
+			default:
+				panic("unrecognized profile: " + profile)
+			}
+
+			done := NewDone()
+
+			type InvokeParams struct {
+				fx.In
+				ContextBuilder data.ContextBuilder
+				Migrator       migrate.Migrator `name:"repository_inner"`
+			}
+
+			addGormMigrations := func(mainFiles, testFiles embed.FS, in ...any) []any {
+				return append(in, []any{
+					fx.Annotate(
+						func() *gorm.Migrations {
+							return &gorm.Migrations{
+								Sources: map[string]*gorm.MigrationSource{
+									"main": {
+										// Main difference is that this is true
+										Drop: true,
+										FS:   mainFiles,
+										//FS:   gorm_migrations.Main,
+										Path: "main",
+									},
+								},
+								Symbols: testSource(),
+							}
+						}, fx.ResultTags(`name:"main"`)),
+					fx.Annotate(
+						func() *gorm.Migrations {
+							return &gorm.Migrations{
+								Sources: map[string]*gorm.MigrationSource{
+									"test": {
+										Drop: false,
+										FS:   testFiles,
+										//FS:   gorm_migrations.Test,
+										Path: "test",
+									},
+								},
+								Symbols: testSource(),
+							}
+						}, fx.ResultTags(`name:"extended"`)),
+				}...)
+			}
+
+			addGocqlMigrations := func(mainFiles, testFiles embed.FS, in ...any) []any {
+				return append(in, []any{
+
+					fx.Annotate(
+						func() *gocql.Migrations {
+							return &gocql.Migrations{
+								Sources: map[string]*gocql.MigrationSource{
+									"main": {
+										// Main difference is that this is true
+										//FS: gocql_migrations_main.Files,
+										FS: mainFiles,
+									},
+								},
+								Symbols: map[string]any{
+									"AppUser": "app",
+								},
+							}
+						}, fx.ResultTags(`name:"main"`)),
+					fx.Annotate(
+						func() *gocql.Migrations {
+							return &gocql.Migrations{
+								Sources: map[string]*gocql.MigrationSource{
+									"test": {
+										//FS: gocql_migrations_test.Files,
+										FS: testFiles,
+									},
+								},
+								Symbols: testSource(),
+							}
+						}, fx.ResultTags(`name:"extended"`)),
+				}...)
+			}
+
+			c := cs.New()
+
+			c.AddSource(sources.FromValue(runtime.PrefixRepositoryCommon, &runtime.RepositoryConfig{
+				PrimaryMode:  repositoryMode,
+				MetadataMode: metadataRepositoryMode,
+			}))
+
+			rConfig := runtime.NewRepositoryConfig(c)
+
+			app := fx.New(fx.Provide(testSource), outer.Index(), core_fx.RepositoryInnerIndex(rConfig, core_fx.NewIndexOptions(
+				core_fx.ExcludeMigrations(),
+				core_fx.ExcludeRepositoryConfig(),
+			)), func() fx.Option {
+				switch profile {
+				case ProfileGormPsql:
+					return fx.Module("test", fx.Provide(
+						addGormMigrations(gorm_migrations.Main, gorm_migrations.Test,
+							func() runtime.GormAppConfigResult {
+								return runtime.GormAppConfigResult{
+									Result: gormConfigPsql,
+								}
+							},
+						)...,
+					))
+				case ProfileGormPsqlStaticMetadata:
+					return fx.Module("test",
+						fx.Provide(func() *static.Root {
+							d, err := static.LoadData(bytes.NewReader(testdata.TestData))
+							crypto.Check(err)
+							return d
+						}),
+						fx.Provide(
+							addGormMigrations(gorm_migrations_no_metadata.Main, gorm_migrations_no_metadata.Test,
+								func() runtime.GormAppConfigResult {
+									return runtime.GormAppConfigResult{
+										Result: gormConfigPsqlLite,
+									}
+								},
+							)...,
+						))
+				case ProfileGormSqlite:
+					return fx.Module("test", fx.Provide(
+						addGormMigrations(gorm_migrations.Main, gorm_migrations.Test,
+							func() runtime.GormAppConfigResult {
+								return runtime.GormAppConfigResult{
+									Result: gormConfigSqlite,
+								}
+							},
+						)...,
+					))
+				case ProfileGormSqliteStaticMetadata:
+					return fx.Module("test",
+						fx.Provide(func() *static.Root {
+							d, err := static.LoadData(bytes.NewReader(testdata.TestData))
+							crypto.Check(err)
+							return d
+						}),
+						fx.Provide(
+							addGormMigrations(gorm_migrations_no_metadata.Main, gorm_migrations_no_metadata.Test,
+								func() runtime.GormAppConfigResult {
+									return runtime.GormAppConfigResult{
+										Result: gormConfigSqliteLite,
+									}
+								},
+							)...,
+						))
+				case ProfileGocql:
+					return fx.Module("test", fx.Provide(
+						addGocqlMigrations(gocql_migrations_main.Files, gocql_migrations_test.Files,
+							func() *runtime.IndexConfig {
+								return &runtime.IndexConfig{
+									Prefix: gocqlConfig.Keyspace,
+								}
+							},
+							func() *runtime.ElasticsearchConfig {
+								return &runtime.ElasticsearchConfig{
+									ElasticSearchEndpoint: "http://127.0.0.1:9200",
+								}
+							},
+							func() runtime.GocqlOwnerConfigResult {
+								return runtime.GocqlOwnerConfigResult{
+									Result: gocqlOwnerConfig,
+								}
+							},
+							func() runtime.GocqlAppConfigResult {
+								return runtime.GocqlAppConfigResult{
+									Result: gocqlConfig,
+								}
+							},
+							loopback.NewAuthwiseDataflowServiceClient,
+						)...,
+					),
+					)
+				case ProfileGocqlStaticMetadata:
+					return fx.Module("test",
+						fx.Provide(func() *static.Root {
+							d, err := static.LoadData(bytes.NewReader(testdata.TestData))
+							crypto.Check(err)
+							return d
+						}),
+						fx.Provide(
+							addGocqlMigrations(gocql_migrations_main_no_metadata.Files, gocql_migrations_test_no_metadata.Files,
+								func() *runtime.IndexConfig {
+									return &runtime.IndexConfig{
+										Prefix: gocqlLiteConfig.Keyspace,
+									}
+								},
+								func() *runtime.ElasticsearchConfig {
+									return &runtime.ElasticsearchConfig{
+										ElasticSearchEndpoint: "http://127.0.0.1:9200",
+									}
+								},
+								func() runtime.GocqlOwnerConfigResult {
+									return runtime.GocqlOwnerConfigResult{
+										Result: gocqlOwnerConfig,
+									}
+								},
+								func() runtime.GocqlAppConfigResult {
+									return runtime.GocqlAppConfigResult{
+										Result: gocqlLiteConfig,
+									}
+								},
+								loopback.NewAuthwiseDataflowServiceClient,
+							)...,
+						),
+					)
+				default:
+					panic("unrecognized profile: " + profile)
+				}
+			}(), fx.Module("fixture", opts...),
+				fx.Invoke(func(params InvokeParams) {
+
+					defer done.Done()
+
+					cb := params.ContextBuilder
+					mig := params.Migrator
+
+					ctx := cb.Build(context.Background())
+
+					MigrateSync.Lock()
+					switch profile {
+					case ProfileGormPsql:
+						if !GormPsqlMigrated {
+							db := gorm.GetDB(ctx)
+							crypto.Check(mig.Migrate(gorm.WithDB(ctx, db)))
+							GormPsqlMigrated = true
+						}
+					case ProfileGormSqlite:
+						if !GormSqliteMigrated {
+							db := gorm.GetDB(ctx)
+							crypto.Check(mig.Migrate(gorm.WithDB(ctx, db)))
+							GormSqliteMigrated = true
+						}
+					case ProfileGocql:
+						if !GocqlMigrated {
+							crypto.Check(mig.Migrate(ctx))
+							GocqlMigrated = true
+						}
+					case ProfileGormPsqlStaticMetadata:
+						if !GormLitePsqlMigrated {
+							db := gorm.GetDB(ctx)
+							crypto.Check(mig.Migrate(gorm.WithDB(ctx, db)))
+							GormLitePsqlMigrated = true
+						}
+					case ProfileGormSqliteStaticMetadata:
+						if !GormLiteSqliteMigrated {
+							db := gorm.GetDB(ctx)
+							crypto.Check(mig.Migrate(gorm.WithDB(ctx, db)))
+							GormLiteSqliteMigrated = true
+						}
+					case ProfileGocqlStaticMetadata:
+						if !GocqlLiteMigrated {
+							crypto.Check(mig.Migrate(ctx))
+							GocqlLiteMigrated = true
+						}
+					default:
+						panic("unrecognized profile: " + profile)
+					}
+					MigrateSync.Unlock()
+
+					switch profile {
+					case ProfileGormPsql:
+						ctx = gorm.WithDB(ctx, gorm.GetDB(ctx).Begin())
+					case ProfileGormSqlite:
+						ctx = gorm.WithDB(ctx, gorm.GetDB(ctx).Begin())
+					case ProfileGocql:
+					case ProfileGormPsqlStaticMetadata:
+						ctx = gorm.WithDB(ctx, gorm.GetDB(ctx).Begin())
+					case ProfileGormSqliteStaticMetadata:
+						ctx = gorm.WithDB(ctx, gorm.GetDB(ctx).Begin())
+					case ProfileGocqlStaticMetadata:
+					default:
+						panic("unrecognized profile: " + profile)
+					}
+
+					callback(t, ctx, profile)
+
+					closeGorm := func() {
+						db := gorm.GetDB(ctx)
+						crypto.Check(db.Rollback().Error)
+						sdb, err := db.DB()
+						crypto.Check(err)
+						crypto.Check(sdb.Close())
+					}
+
+					switch profile {
+					case ProfileGormPsql:
+						closeGorm()
+					case ProfileGormSqlite:
+						closeGorm()
+					case ProfileGocql:
+						gocql.GetSession(ctx).Close()
+					case ProfileGormPsqlStaticMetadata:
+						closeGorm()
+					case ProfileGormSqliteStaticMetadata:
+						closeGorm()
+					case ProfileGocqlStaticMetadata:
+						gocql.GetSession(ctx).Close()
+					default:
+						panic("unrecognized profile: " + profile)
+					}
+				}))
+
+			startCtx, cancel p= context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := app.Start(startCtx); err != nil {
+				log.Fatal().Err(err).Msg("failed to start app")
+			}
+
+			runCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+
+			select {
+			case <-runCtx.Done():
+				panic("test did not run after 20 seconds")
+			case <-done:
+				log.Info().Msg("unit test run")
+			}
+
+			stopCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := app.Stop(stopCtx); err != nil {
+				log.Fatal().Err(err).Msg("failed to stop app")
+			}
+
+		})
+
+	}
+}
+
+*/
+
+type Unit[T any] struct {
+	unit    T
+	symbols symbols.Symbols
+}
+
+func NewUnit[T any]() *Unit[T] {
+	return &Unit[T]{}
+}
+
+func (u *Unit[T]) UnitAndSymbols() (T, symbols.Symbols) {
+	return u.unit, u.symbols
+}
+
+func (u *Unit[T]) Options() fx.Option {
+	return fx.Module("unit", fx.Populate(&u.unit, &u.symbols))
+}
+
+type ListAssertion[E any] struct {
+	ExpectedCount   int
+	AssertListEntry func(t *testing.T, e E)
+}
+
+type SelectAssertion struct {
+	Expression    string
+	ExpectedCount int
+}
+
+type CrudTestFixture[E any, K comparable] struct {
+	EntityFactory      func() E
+	ArrangeContext     func(context.Context) context.Context
+	KeyExists          K
+	KeyMissing         K
+	ExtractKey         func(e E) K
+	SelectAssertions   []SelectAssertion
+	ListAssertion      *ListAssertion[E]
+	AssertDetailEntry  func(t *testing.T, e E)
+	ModifyBeforeCreate func(e E)
+	AssertAfterCreate  func(t *testing.T, e E)
+	ModifyBeforeUpdate func(e E)
+	AssertAfterUpdate  func(t *testing.T, e E)
+}
+
+/*
+func DoTestCrudRepository[E any, K comparable, T data.CrudTemplate[E, K]](t *testing.T,
+	profiles []string,
+	fixtureFactory func(symbols symbols.Symbols) *CrudTestFixture[E, K]) {
+
+	harness := NewUnit[T]()
+
+	Run(t, profiles, func(t *testing.T, ctx context.Context, _ string) {
+
+		unit, symbols := harness.UnitAndSymbols()
+
+		fixture := fixtureFactory(symbols)
+
+		ctx = fixture.ArrangeContext(ctx)
+
+		for _, sa := range fixture.SelectAssertions {
+
+			l, err := labels.Parse(sa.Expression)
+
+			if err != nil {
+				panic(err)
+			}
+
+			list, err := unit.ListAll(ctx, data.ListParams{
+				Selector: l,
+			})
+
+			require.NoError(t, err)
+			assert.Len(t, list.List, sa.ExpectedCount, sa.Expression)
+		}
+
+		if fixture.ListAssertion != nil {
+
+			la := fixture.ListAssertion
+
+			list, err := unit.ListAll(ctx, data.ListParams{})
+
+			require.NoError(t, err)
+			assert.Len(t, list.List, la.ExpectedCount)
+
+			assert.NotNil(t, list.List)
+			for _, v := range list.List {
+				la.AssertListEntry(t, v)
+			}
+		}
+
+		got, err := unit.FindByKey(ctx, fixture.KeyMissing)
+
+		require.NoError(t, err)
+		assert.Nil(t, got)
+
+		got, err = unit.FindByKey(ctx, fixture.KeyExists)
+
+		require.NoError(t, err)
+		assert.NotNil(t, got)
+
+		fixture.AssertDetailEntry(t, got)
+
+		// Create with bad labels
+		got = fixture.EntityFactory()
+		if HasLabels(got) {
+			fixture.ModifyBeforeCreate(got)
+			SetBadLabels(got)
+			err = unit.Create(ctx, got)
+			assert.Contains(t, err.Error(), "name part must consist")
+		}
+		// Create
+		got = fixture.EntityFactory()
+		fixture.ModifyBeforeCreate(got)
+		err = unit.Create(ctx, got)
+		require.NoError(t, err)
+
+		fixture.AssertAfterCreate(t, got)
+
+		err = unit.Create(ctx, got)
+		assert.True(t, errors.Is(err, data.EntityAlreadyExists{}))
+
+		key := fixture.ExtractKey(got)
+
+		got2, err := unit.FindByKey(ctx, key)
+		require.NoError(t, err)
+
+		fixture.AssertAfterCreate(t, got2)
+
+		if fixture.AssertAfterUpdate != nil && fixture.ModifyBeforeUpdate != nil {
+
+			fixture.ModifyBeforeUpdate(got)
+
+			err = unit.Update(ctx, got)
+
+			require.NoError(t, err)
+
+			fixture.AssertAfterUpdate(t, got)
+
+			if HasLabels(got) {
+				SetBadLabels(got)
+				err = unit.Update(ctx, got)
+				assert.Contains(t, err.Error(), "name part must consist")
+			}
+
+			got2, err = unit.FindByKey(ctx, fixture.ExtractKey(got))
+			require.NoError(t, err)
+			fixture.AssertAfterUpdate(t, got2)
+
+		}
+
+		err = unit.Delete(ctx, key)
+		require.NoError(t, err)
+
+		got3, err := unit.FindByKey(ctx, key)
+
+		require.NoError(t, err)
+		assert.Nil(t, got3)
+
+	}, harness.Options())
+}
+
+*/
+
+func SetBadLabels(got any) {
+
+	f := reflect.ValueOf(got).Elem().FieldByName("Labels")
+	f.Set(reflect.ValueOf(map[string]string{
+		" b a d k e y": "__--**&&bdValue",
+	}))
+}
+
+func HasLabels(got any) bool {
+	_, ok := reflect.TypeOf(got).Elem().FieldByName("Labels")
+	return ok
+}
+
+type FilterKeysTestFixture[K comparable] struct {
+	UnitFactory    func() data.FilterKeysTemplate[K]
+	ArrangeContext func(context.Context) context.Context
+	KeyExists      K
+	KeyMissing     K
+}
+
+/*
+func DoTestFilterKeysRepository[K comparable, T data.FilterKeysTemplate[K]](t *testing.T, profiles []string, fixtureFactory func(symbols symbols.Symbols) *FilterKeysTestFixture[K]) {
+
+	harness := NewUnit[T]()
+
+	Run(t, profiles, func(t *testing.T, ctx context.Context, _ string) {
+
+		unit, symbols := harness.UnitAndSymbols()
+
+		fixture := fixtureFactory(symbols)
+
+		ctx = fixture.ArrangeContext(ctx)
+
+		got, err := unit.FilterKeys(ctx, []K{fixture.KeyExists, fixture.KeyMissing})
+
+		require.NoError(t, err)
+		assert.Equal(t, []K{fixture.KeyExists}, got)
+	}, harness.Options())
+
+}
+
+*/

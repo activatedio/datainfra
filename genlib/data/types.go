@@ -26,28 +26,30 @@ func (d Entry) GetJenHelper() JenHelper {
 
 	res.StructType = jen.Qual(d.Type.PkgPath(), d.Type.Name())
 
-	var keys []reflect.StructField
-
 	for i := 0; i < d.Type.NumField(); i++ {
 		f := d.Type.Field(i)
-		dt := parseTag(f.Tag.Get("data"))
-		if dt.isKey {
-			keys = append(keys, f)
+		dt := ParseTag(f.Tag.Get("data"))
+		if dt.IsKey {
+			res.KeyFields = append(res.KeyFields, f)
 		}
 	}
 
 	switch {
-	case len(keys) == 1:
-		res.KeyType = jen.Qual(keys[0].Type.PkgPath(), keys[0].Type.Name())
-	case len(keys) > 1:
+	case len(res.KeyFields) == 1:
+		res.keyCodeGen = &fixedKeyCodeGenerator{
+			code: jen.Qual(res.KeyFields[0].Type.PkgPath(), res.KeyFields[0].Type.Name()),
+		}
+	case len(res.KeyFields) > 1:
 		keyTypeName := fmt.Sprintf("%sKey", d.Type.Name())
-		res.KeyType = jen.Id(keyTypeName)
+		res.keyCodeGen = &localKeyCodeGenerator{
+			id: keyTypeName,
+		}
 
 		fs := &jen.Statement{}
 
 		fs.Add(jen.Commentf("%s is the key for %s", keyTypeName, d.Type.Name()))
 
-		for _, key := range keys {
+		for _, key := range res.KeyFields {
 			fs.Add(jen.Id(key.Name).Qual(key.Type.PkgPath(), key.Type.Name()))
 		}
 
@@ -57,31 +59,62 @@ func (d Entry) GetJenHelper() JenHelper {
 	return res
 }
 
-type dataTag struct {
-	isKey bool
+type Tag struct {
+	IsKey bool
 }
 
-func parseTag(tag string) dataTag {
+func ParseTag(tag string) Tag {
 
-	dt := dataTag{}
+	t := Tag{}
 
 	for _, v := range strings.Split(tag, ",") {
 		switch {
 		case v == "key":
-			dt.isKey = true
+			t.IsKey = true
 		}
 	}
 
-	return dt
+	return t
+}
+
+type keyCodeGenerator interface {
+	// Generate generates a key code based on the relative import of the data interface type. For a local generation
+	// this import will be blank.  The generator generates the code for the key, which may or may not use the
+	// provided interface type depending on if the key type is local or not
+	Generate(interfaceImport string) jen.Code
+}
+
+type fixedKeyCodeGenerator struct {
+	code jen.Code
+}
+
+func (f *fixedKeyCodeGenerator) Generate(interfaceImport string) jen.Code {
+	return f.code
+}
+
+type localKeyCodeGenerator struct {
+	id string
+}
+
+func (l *localKeyCodeGenerator) Generate(interfaceImport string) jen.Code {
+	if interfaceImport == "" {
+		return jen.Id(l.id)
+	} else {
+		return jen.Qual(interfaceImport, l.id)
+	}
 }
 
 type JenHelper struct {
 	InterfaceName string
 	StructType    jen.Code
 	StructName    string
-	KeyType       jen.Code
-	// If not nil, we use this statement to generate a key, usually for a composite type
-	keyStmt *jen.Statement
+	KeyFields     []reflect.StructField
+	keyCodeGen    keyCodeGenerator
+	keyStmt       *jen.Statement
+}
+
+func (g JenHelper) GenerateKeyCode(interfaceImport string) jen.Code {
+	return g.keyCodeGen.Generate(interfaceImport)
 }
 
 type Operation struct {

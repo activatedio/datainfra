@@ -5,6 +5,10 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
+var (
+	ImportThis = "github.com/activatedio/datainfra/pkg/data"
+)
+
 type Types struct {
 	Package string
 	Entries []Entry
@@ -53,7 +57,7 @@ func NewDataRegistry() genlib.Registry {
 			case OperationFindByKey:
 				s.Id("FindByKey").Params(
 					qualCtx,
-					jh.KeyType,
+					jh.GenerateKeyCode(""),
 				).Params(
 					jen.Op("*").Add(jh.StructType),
 					idError,
