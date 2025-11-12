@@ -72,6 +72,25 @@ func (s *Set[T]) Clone() *Set[T] {
 	}
 }
 
+func (s *Set[T]) Intersect(other *Set[T]) *Set[T] {
+
+	res := NewSet[T]()
+
+	for _, el := range other.All() {
+		if s.Contains(el) {
+			res.Add(el)
+		}
+	}
+
+	return res
+}
+
+func (s *Set[T]) Len() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.entries)
+}
+
 func (s *Set[T]) All() []T {
 	s.mu.Lock()
 	defer s.mu.Unlock()

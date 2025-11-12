@@ -36,6 +36,8 @@ func main() {
 		InterfaceImport: "github.com/activatedio/datainfra/examples/data/repository",
 		Package:         "gorm",
 		Entries:         ds,
+		GenerateIndex:   true,
+		IndexModule:     "example.data.gorm",
 	})
 
 }

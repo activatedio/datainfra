@@ -6,13 +6,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
-// Entity defines a generic interface for entities with a comparable key.
-// It requires methods for validation and retrieving the entity's ID.
-type Entity[K comparable] interface {
-	Validate() error
-	GetID() K
-}
-
 // None represents a type used as a placeholder or marker when no meaningful value or identifier is required.
 type None struct {
 }
@@ -44,7 +37,7 @@ type ScopeTemplate[S Scope] interface {
 }
 
 // FindByKeyTemplate provides functionality to locate entities by their key and check their existence in a data store.
-type FindByKeyTemplate[E Entity[K], K comparable] interface {
+type FindByKeyTemplate[E any, K comparable] interface {
 	FindByKey(ctx context.Context, key K) (E, error)
 	ExistsByKey(ctx context.Context, key K) (bool, error)
 }
@@ -61,7 +54,7 @@ type ListAllTemplate[E any] interface {
 }
 
 // CrudTemplate defines a generic CRUD interface for managing entities of type E with key of type K in a data store.
-type CrudTemplate[E Entity[K], K comparable] interface {
+type CrudTemplate[E any, K comparable] interface {
 	FindByKeyTemplate[E, K]
 	ListAllTemplate[E]
 	Create(ctx context.Context, entity E) error
@@ -86,9 +79,4 @@ type AssociateParentRepository[K comparable] interface {
 // AssociateChildRepository defines an interface for filtering child keys based on provided criteria in a repository context.
 type AssociateChildRepository[K comparable] interface {
 	FilterKeys(ctx context.Context, keys []K) ([]K, error)
-}
-
-// ScopeTemplate is a generic interface for defining and retrieving scope-specific context configurations.
-type ScopeTemplate[S Scope] interface {
-	CurrentScope(ctx context.Context) S
 }
