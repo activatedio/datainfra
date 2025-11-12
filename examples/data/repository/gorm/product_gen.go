@@ -37,6 +37,7 @@ func NewProductRepository(_ ProductRepositoryParams) repository.ProductRepositor
 			return m.Product
 		},
 	})
+	// implements the SearchHandler interface.
 	return &productRepositoryImpl{
 		Template: template, CrudTemplate: gorm.NewMappingCrudTemplate[*model.Product, *ProductInternal, string](gorm.MappingCrudTemplateImplOptions[*model.Product, *ProductInternal, string]{
 			Template:    template,

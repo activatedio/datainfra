@@ -108,6 +108,7 @@ func NewSet[T comparable](entries ...T) *Set[T] {
 	s.Add(entries...)
 	return s
 }
+
 func NewFrozenSet[T comparable](entries ...T) *Set[T] {
 
 	s := NewSet[T](entries...)

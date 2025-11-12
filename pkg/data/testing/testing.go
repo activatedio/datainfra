@@ -13,13 +13,13 @@ import (
 
 const (
 /*
-   TODO - profiles are provided by the runner
-   ProfileGormPsql                 = "gorm_psql"
-   ProfileGormSqlite               = "gorm_sqlite"
-   ProfileGocql                    = "gocql"
-   ProfileGormPsqlStaticMetadata   = "gorm_psql_static_metadata"
-   ProfileGormSqliteStaticMetadata = "gorm_sqlite_static_metadata"
-   ProfileGocqlStaticMetadata      = "gocql_static_metadata"
+TODO - profiles are provided by the runner
+ProfileGormPsql                 = "gorm_psql"
+ProfileGormSqlite               = "gorm_sqlite"
+ProfileGocql                    = "gocql"
+ProfileGormPsqlStaticMetadata   = "gorm_psql_static_metadata"
+ProfileGormSqliteStaticMetadata = "gorm_sqlite_static_metadata"
+ProfileGocqlStaticMetadata      = "gocql_static_metadata"
 */
 )
 

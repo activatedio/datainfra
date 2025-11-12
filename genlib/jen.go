@@ -78,6 +78,8 @@ func NewRegistry() Registry {
 }
 
 type Registry interface {
+	// Clone creates a copy of the internal storage
+	Clone() Registry
 	WithHandlerEntries(entries ...*HandlerEntries) Registry
 	RunFileHandler(f *jen.File, entry any)
 	RunFilePathHandler(path string, entry WithPackage)
@@ -85,22 +87,50 @@ type Registry interface {
 	BuildStatement(stmt *jen.Statement, entry any) *jen.Statement
 }
 
+func (r *registry) Clone() Registry {
+
+	dh := map[reflect.Type][]DirectoryHandler{}
+	for k, v := range r.directoryHandlers {
+		dh[k] = v
+	}
+	fh := map[reflect.Type][]FileHandler{}
+	for k, v := range r.fileHandlers {
+		fh[k] = v
+	}
+	sh := map[reflect.Type][]StatementHandler{}
+	for k, v := range r.statementHandlers {
+		sh[k] = v
+	}
+
+	return &registry{
+		directoryHandlers: dh,
+		fileHandlers:      fh,
+		statementHandlers: sh,
+	}
+}
+
 func (r *registry) WithHandlerEntries(entries ...*HandlerEntries) Registry {
 
 	for _, es := range entries {
 		if es.DirectoryHandlers != nil {
 			for k, v := range es.DirectoryHandlers {
-				r.directoryHandlers[k] = v
+				exist := r.directoryHandlers[k]
+				exist = append(exist, v...)
+				r.directoryHandlers[k] = exist
 			}
 		}
 		if es.FileHandlers != nil {
 			for k, v := range es.FileHandlers {
-				r.fileHandlers[k] = v
+				exist := r.fileHandlers[k]
+				exist = append(exist, v...)
+				r.fileHandlers[k] = exist
 			}
 		}
 		if es.StatementHandlers != nil {
 			for k, v := range es.StatementHandlers {
-				r.statementHandlers[k] = v
+				exist := r.statementHandlers[k]
+				exist = append(exist, v...)
+				r.statementHandlers[k] = exist
 			}
 		}
 	}
