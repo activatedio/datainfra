@@ -103,6 +103,13 @@ func NewDataRegistry() genlib.Registry {
 
 		fm := entry.(*FileMain)
 		d := fm.Entry
+
+		impl := data.ExtractImplementationFor[Implementation](d.Implementations)
+
+		if impl != nil {
+			r = impl.RegistryBuilder(r.Clone())
+		}
+
 		jh := d.GetJenHelper()
 		internalName := jh.StructName + "Internal"
 		implName := strcase.ToLowerCamel(jh.StructName) + "RepositoryImpl"

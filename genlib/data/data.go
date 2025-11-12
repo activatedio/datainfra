@@ -31,6 +31,12 @@ func NewDataRegistry() genlib.Registry {
 
 		for _, d := range ds {
 
+			impl := ExtractImplementationFor[Implementation](d.Implementations)
+
+			if impl != nil {
+				r = impl.RegistryBuilder(r.Clone())
+			}
+
 			jh := d.GetJenHelper()
 
 			if jh.keyStmt != nil {
@@ -39,9 +45,9 @@ func NewDataRegistry() genlib.Registry {
 
 			f.Commentf("%s is a repository for the type %s", jh.InterfaceName,
 				d.Type.Name()).Line().Type().Id(jh.InterfaceName).Interface(
-				r.BuildStatement(&jen.Statement{}, &InterfaceMethods{
+				*r.BuildStatement(&jen.Statement{}, &InterfaceMethods{
 					Entry: &d,
-				}),
+				})...,
 			)
 		}
 
@@ -55,13 +61,13 @@ func NewDataRegistry() genlib.Registry {
 		for _, op := range d.Operations.All() {
 			switch op {
 			case OperationFindByKey:
-				s.Id("FindByKey").Params(
+				s.Add(jen.Id("FindByKey").Params(
 					qualCtx,
 					jh.GenerateKeyCode(""),
 				).Params(
 					jen.Op("*").Add(jh.StructType),
 					idError,
-				)
+				))
 			}
 		}
 

@@ -9,6 +9,8 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
+type RegistryBuilder func(r genlib.Registry) genlib.Registry
+
 // Entry is a descriptor for a data type
 type Entry struct {
 	Type       reflect.Type
@@ -128,4 +130,5 @@ func (o Operation) String() string {
 var (
 	OperationFindByKey = Operation{"findByKey"}
 	OperationsCrud     = genlib.NewFrozenSet(OperationFindByKey)
+	OperationSearch    = Operation{"search"}
 )

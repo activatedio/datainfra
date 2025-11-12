@@ -4,6 +4,7 @@ import (
 	"reflect"
 
 	"github.com/activatedio/datainfra/examples/data/model"
+	"github.com/activatedio/datainfra/genlib"
 	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/activatedio/datainfra/genlib/data/gorm"
 )
@@ -20,6 +21,18 @@ func main() {
 		{
 			Type:       reflect.TypeFor[model.Product](),
 			Operations: data.OperationsCrud,
+			Implementations: []any{
+				data.Implementation{
+					RegistryBuilder: func(r genlib.Registry) genlib.Registry {
+						return r.WithHandlerEntries(data.NewSearchHandlerEntries())
+					},
+				},
+				gorm.Implementation{
+					RegistryBuilder: func(r genlib.Registry) genlib.Registry {
+						return r.WithHandlerEntries(gorm.NewSearchHandlerEntries())
+					},
+				},
+			},
 		},
 		{
 			Type:       reflect.TypeFor[model.ProductCategory](),

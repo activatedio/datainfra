@@ -13,6 +13,7 @@ type CategoryRepository interface {
 // ProductRepository is a repository for the type Product
 type ProductRepository interface {
 	FindByKey(context.Context, string) (*model.Product, error)
+	// Need to add search methods here
 }
 type ProductCategoryKey struct {
 	// ProductCategoryKey is the key for ProductCategory
@@ -23,4 +24,5 @@ type ProductCategoryKey struct {
 // ProductCategoryRepository is a repository for the type ProductCategory
 type ProductCategoryRepository interface {
 	FindByKey(context.Context, ProductCategoryKey) (*model.ProductCategory, error)
+	// Need to add search methods here
 }
