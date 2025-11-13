@@ -1,11 +1,11 @@
-> ## Apiinfra
+> ## Datainfra
 >
-> This is a library to enable generation of proto files from go language inputs
+> This is a library to enable generation of data infrastructure
 >
 
-# Apiinfra
+# Datainfra
 
-Simple project to generate code for go api projects using grpc etc...
+Simple project to generate code for repository data access
 
 ## Structure
 
