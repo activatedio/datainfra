@@ -7,7 +7,6 @@ import (
 
 	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/glebarez/sqlite"
-	"go.uber.org/fx"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -18,16 +17,8 @@ const (
 	GormDialectSqlite = "sqlite"
 )
 
-// DBConfig represents the dependency injection configuration for database setup using Gorm.
-type DBConfig struct {
-	fx.In
-	GormConfig *GormConfig `name:"app"`
-}
-
 // NewDB creates and configures a new Gorm database instance based on the provided DBConfig.
-func NewDB(dbConfig DBConfig) (*gorm.DB, error) {
-
-	config := dbConfig.GormConfig
+func NewDB(config *GormConfig) (*gorm.DB, error) {
 
 	var dialector gorm.Dialector
 
