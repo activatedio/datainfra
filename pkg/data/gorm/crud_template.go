@@ -12,14 +12,14 @@ import (
 // FindBuilder defines a function type for building queries to find entities in the database based on a given key.
 type FindBuilder[K comparable] func(ctx context.Context, tx *gorm.DB, key K) *gorm.DB
 
-type crudTemplateImpl[E data.Entity[K], I any, K comparable] struct {
+type crudTemplateImpl[E any, I any, K comparable] struct {
 	template    MappingTemplate[E, I]
 	findBuilder FindBuilder[K]
 }
 
 // MappingCrudTemplateImplOptions provides configuration options for creating a mapping-based CRUD template implementation.
 // E represents the external entity type, I represents the internal entity type, and K is the type of the entity's key.
-type MappingCrudTemplateImplOptions[E data.Entity[K], I any, K comparable] struct {
+type MappingCrudTemplateImplOptions[E any, I any, K comparable] struct {
 	// Template specifies the mapping template used for conversions between external and internal representations.
 	Template MappingTemplate[E, I]
 	// FindBuilder is an optional query builder function for locating entities, defaulting to queries based on "id".
@@ -27,7 +27,7 @@ type MappingCrudTemplateImplOptions[E data.Entity[K], I any, K comparable] struc
 }
 
 // NewMappingCrudTemplate creates a generic CRUD template using a mapping template and optional find builder configuration.
-func NewMappingCrudTemplate[E data.Entity[K], I any, K comparable](options MappingCrudTemplateImplOptions[E, I, K]) data.CrudTemplate[E, K] {
+func NewMappingCrudTemplate[E any, I any, K comparable](options MappingCrudTemplateImplOptions[E, I, K]) data.CrudTemplate[E, K] {
 	return &crudTemplateImpl[E, I, K]{
 		template:    options.Template,
 		findBuilder: options.FindBuilder,
@@ -37,14 +37,14 @@ func NewMappingCrudTemplate[E data.Entity[K], I any, K comparable](options Mappi
 // CrudTemplateImplOptions provides configuration for creating a CRUD template implementation for entity operations.
 // E represents the external entity type that must implement the model.Entity interface.
 // K represents the entity's key type, which must be a comparable type.
-type CrudTemplateImplOptions[E data.Entity[K], K comparable] struct {
+type CrudTemplateImplOptions[E any, K comparable] struct {
 	Template Template[E]
 	// Optional column to use for the find method. Defaults to "id"
 	FindBuilder FindBuilder[K]
 }
 
 // NewCrudTemplate creates a CRUD template for managing entities of type E with a key of type K using specified options.
-func NewCrudTemplate[E data.Entity[K], K comparable](options CrudTemplateImplOptions[E, K]) data.CrudTemplate[E, K] {
+func NewCrudTemplate[E any, K comparable](options CrudTemplateImplOptions[E, K]) data.CrudTemplate[E, K] {
 	return NewMappingCrudTemplate[E, E, K](MappingCrudTemplateImplOptions[E, E, K]{
 		Template:    options.Template,
 		FindBuilder: options.FindBuilder,

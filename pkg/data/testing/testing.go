@@ -7,7 +7,6 @@ import (
 
 	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/activatedio/datainfra/pkg/symbols"
-	"github.com/google/uuid"
 	"go.uber.org/fx"
 )
 
@@ -23,6 +22,7 @@ ProfileGocqlStaticMetadata      = "gocql_static_metadata"
 */
 )
 
+/*
 func RandomLabels() data.Labels {
 	return map[string]string{
 		// TODO - better to have another uuid provider
@@ -30,6 +30,8 @@ func RandomLabels() data.Labels {
 		"a2": uuid.New().String(),
 	}
 }
+
+*/
 
 // All test profiles apply to repositories which are present in all modes, including static metadata
 /*
@@ -299,6 +301,21 @@ func NewDone() Done {
 
 func (d Done) Done() {
 	d <- true
+}
+
+func Run(t *testing.T, fixtures []AppFixture, toInvoke any, toProvide ...any) {
+
+	for _, fix := range fixtures {
+
+		res := fix.GetApp(t, toInvoke, toProvide...)
+
+		t.Run(res.Name, func(t *testing.T) {
+			res.App.RequireStart()
+
+			res.App.RequireStop()
+		})
+
+	}
 }
 
 /*
@@ -828,6 +845,7 @@ func DoTestCrudRepository[E any, K comparable, T data.CrudTemplate[E, K]](t *tes
 
 */
 
+/*
 func SetBadLabels(got any) {
 
 	f := reflect.ValueOf(got).Elem().FieldByName("Labels")
@@ -835,6 +853,8 @@ func SetBadLabels(got any) {
 		" b a d k e y": "__--**&&bdValue",
 	}))
 }
+
+*/
 
 func HasLabels(got any) bool {
 	_, ok := reflect.TypeOf(got).Elem().FieldByName("Labels")

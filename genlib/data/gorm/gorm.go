@@ -89,6 +89,11 @@ func NewDataRegistry() genlib.Registry {
 
 		opts := &jen.Statement{}
 
+		opts.Add(
+			jen.Qual(ImportThis, "NewDB"),
+			jen.Qual(ImportThis, "NewContextBuilder"),
+		)
+
 		for _, d := range im.Entries {
 			opts = opts.Add(jen.Id(fmt.Sprintf("New%sRepository", d.Type.Name())))
 		}
