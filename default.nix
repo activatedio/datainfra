@@ -5,6 +5,7 @@ stdenv.mkDerivation {
   buildInputs = with pkgs; [
     go
     gnumake
+    postgresql
   ];
   shellHook = ''
     export GOPATH=$HOME/go

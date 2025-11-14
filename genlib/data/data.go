@@ -67,8 +67,49 @@ func NewDataRegistry() genlib.Registry {
 				).Params(
 					jen.Op("*").Add(jh.StructType),
 					idError,
+				)).Add(jen.Id("ExistsByKey").Params(
+					qualCtx,
+					jh.GenerateKeyCode(""),
+				).Params(
+					jen.Bool(),
+					idError,
+				))
+			case OperationList:
+				s.Add(jen.Id("ListAll").Params(
+					qualCtx, jen.Qual(ImportThis, "ListParams")).Params(
+					jen.Op("*").Qual(ImportThis, "List").Types(
+						jen.Op("*").Add(jh.StructType),
+					),
+					jen.Error(),
+				))
+			case OperationCreate:
+				s.Add(jen.Id("Create").Params(
+					qualCtx, jen.Op("*").Add(jh.StructType)).Params(
+					jen.Error(),
+				))
+			case OperationUpdate:
+				s.Add(jen.Id("Update").Params(
+					qualCtx, jen.Op("*").Add(jh.StructType)).Params(
+					jen.Error(),
+				))
+			case OperationDelete:
+				s.Add(jen.Id("Delete").Params(
+					qualCtx, jh.GenerateKeyCode("")).Params(
+					jen.Error(),
+				))
+				s.Add(jen.Id("DeleteEntity").Params(
+					qualCtx, jen.Op("*").Add(jh.StructType)).Params(
+					jen.Error(),
 				))
 			}
+
+			/*
+				Create(ctx context.Context, entity E) error
+				Update(ctx context.Context, entity E) error
+				Delete(ctx context.Context, key K) error
+				DeleteEntity(ctx context.Context, entity E) error
+
+			*/
 		}
 
 		return s

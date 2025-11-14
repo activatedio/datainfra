@@ -129,6 +129,11 @@ func (o Operation) String() string {
 
 var (
 	OperationFindByKey = Operation{"findByKey"}
-	OperationsCrud     = genlib.NewFrozenSet(OperationFindByKey)
-	OperationSearch    = Operation{"search"}
+	OperationList      = Operation{"list"}
+	OperationCreate    = Operation{"create"}
+	OperationUpdate    = Operation{"update"}
+	OperationDelete    = Operation{"delete"}
+	OperationsCrud     = genlib.NewFrozenSet(
+		OperationFindByKey, OperationList, OperationCreate, OperationUpdate, OperationDelete,
+	)
 )

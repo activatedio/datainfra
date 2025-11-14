@@ -7,300 +7,20 @@ import (
 
 	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/activatedio/datainfra/pkg/symbols"
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/fx"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
-const (
-/*
-TODO - profiles are provided by the runner
-ProfileGormPsql                 = "gorm_psql"
-ProfileGormSqlite               = "gorm_sqlite"
-ProfileGocql                    = "gocql"
-ProfileGormPsqlStaticMetadata   = "gorm_psql_static_metadata"
-ProfileGormSqliteStaticMetadata = "gorm_sqlite_static_metadata"
-ProfileGocqlStaticMetadata      = "gocql_static_metadata"
-*/
-)
-
-/*
 func RandomLabels() data.Labels {
 	return map[string]string{
 		// TODO - better to have another uuid provider
 		"a1": uuid.New().String(),
 		"a2": uuid.New().String(),
 	}
-}
-
-*/
-
-// All test profiles apply to repositories which are present in all modes, including static metadata
-/*
-func GetAllTestProfiles() []string {
-
-	switch coretesting.GetTestProfile("../.test-profile") {
-	case coretesting.TestProfileSlim:
-		return []string{
-			ProfileGormPsql, ProfileGormSqlite,
-			ProfileGormPsqlStaticMetadata, ProfileGormSqliteStaticMetadata,
-		}
-	case coretesting.TestProfileStandard:
-		return []string{
-			ProfileGormPsql, ProfileGormSqlite, ProfileGocql,
-			ProfileGormPsqlStaticMetadata, ProfileGormSqliteStaticMetadata, ProfileGocqlStaticMetadata,
-		}
-	default:
-		panic("invalid profile")
-	}
-
-}
-*/
-
-/*
-func GetMainTestProfiles() []string {
-
-	switch coretesting.GetTestProfile("../.test-profile") {
-	case coretesting.TestProfileSlim:
-		return []string{ProfileGormPsql, ProfileGormSqlite}
-	case coretesting.TestProfileStandard:
-		return []string{ProfileGormPsql, ProfileGormSqlite, ProfileGocql}
-	default:
-		panic("invalid profile")
-	}
-}
-
-*/
-
-/*
-var (
-	MigrateSync sync.Mutex
-
-	GormPsqlMigrated       bool
-	GormLitePsqlMigrated   bool
-	GormSqliteMigrated     bool
-	GormLiteSqliteMigrated bool
-	GocqlMigrated          bool
-	GocqlLiteMigrated      bool
-
-	gocqlConfig          *runtime.GocqlConfig
-	gocqlOwnerConfig     *runtime.GocqlConfig
-	gocqlLiteConfig      *runtime.GocqlConfig
-	gormConfigPsql       *runtime.GormConfig
-	gormConfigPsqlLite   *runtime.GormConfig
-	gormConfigSqlite     *runtime.GormConfig
-	gormConfigSqliteLite *runtime.GormConfig
-)
-
-*/
-
-// TODO - consider running a setup of the databases using the setup classes before each test
-/*
-func TestMain(m *testing.M) {
-
-	awid.NextID = awid.NewStandaloneIDFunc(0)
-
-	crypto.Check(os.Setenv("DEV_LOGGING", "true"))
-	logging.ConfigureDefault(os.Stdout)
-
-	repository.SetupStubHandlers()
-
-	vs := setupAllDatabases()
-	ret := m.Run()
-	teardownAllDatabases(vs)
-	os.Exit(ret)
-
-}
-
-*/
-
-/*
-func setupAllDatabases() []cs.Config {
-
-	setupGormPsqlOwnerConfig := func(c cs.Config) {
-		c.AddSource(sources.FromValue(runtime.PrefixRepositoryGormOwner, &runtime.GormConfig{
-			Dialect:          "psql",
-			Host:             "127.0.0.1",
-			Port:             5432,
-			Username:         "postgres",
-			Password:         "supersecret",
-			Name:             "postgres",
-			EnableSQLLogging: true,
-		}))
-	}
-
-	setupGocqlIndex := func(c cs.Config, name string) {
-		c.AddSource(sources.FromValue(runtime.PrefixIndex, &runtime.IndexConfig{
-			Prefix: name,
-		}))
-		c.AddSource(sources.FromValue(runtime.PrefixRepositoryElasticSearch, &runtime.ElasticsearchConfig{
-			ElasticSearchEndpoint: "http://127.0.0.1:9200",
-		}))
-	}
-
-	setupRepositoryMode := func(c cs.Config, mode string) {
-		c.AddSource(sources.FromValue(runtime.PrefixRepositoryCommon, &runtime.RepositoryConfig{
-			PrimaryMode:  mode,
-			MetadataMode: mode,
-		}))
-	}
-
-	suffix := fmt.Sprintf("%d_%d", time.Now().UnixMilli(), os.Getpid())
-
-	var res []cs.Config
-
-	gocqlKeyspace := fmt.Sprintf("unit_core_%s", suffix)
-	gocqlLiteKeyspace := fmt.Sprintf("%s_lite", gocqlKeyspace)
-
-	gormPsqlDBName := fmt.Sprintf("test_%s", suffix)
-	gormPsqlLiteDBName := fmt.Sprintf("%s_lite", gormPsqlDBName)
-	gormSqliteDBName := fmt.Sprintf("/tmp/test-%s.db", suffix)
-	gormSqliteLiteDBName := fmt.Sprintf("/tmp/test-%s-lite.db", suffix)
-
-	for _, p := range GetMainTestProfiles() {
-
-		switch p {
-		case ProfileGormPsql:
-
-			gormConfigPsql = &runtime.GormConfig{
-
-				Dialect:          "psql",
-				Host:             "127.0.0.1",
-				Port:             5432,
-				Username:         gormPsqlDBName,
-				Password:         gormPsqlDBName,
-				Name:             gormPsqlDBName,
-				EnableSQLLogging: true,
-			}
-			gormConfigPsqlLite = &runtime.GormConfig{
-
-				Dialect:          "psql",
-				Host:             "127.0.0.1",
-				Port:             5432,
-				Username:         gormPsqlLiteDBName,
-				Password:         gormPsqlLiteDBName,
-				Name:             gormPsqlLiteDBName,
-				EnableSQLLogging: true,
-			}
-
-			var c cs.Config
-
-			c = cs.New()
-			setupGormPsqlOwnerConfig(c)
-			setupRepositoryMode(c, repository.ModeGorm)
-			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGormApp, gormConfigPsql))
-
-			check.MustNoError(setup.NewSetup(c).Setup(setup.Params{
-				FailOnExisting: true,
-			}))
-			res = append(res, c)
-
-			c = cs.New()
-			setupGormPsqlOwnerConfig(c)
-			setupRepositoryMode(c, repository.ModeGorm)
-			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGormApp, gormConfigPsqlLite))
-
-			check.MustNoError(setup.NewSetup(c).Setup(setup.Params{
-				FailOnExisting: true,
-			}))
-			res = append(res, c)
-
-		case ProfileGormSqlite:
-
-			gormConfigSqlite = &runtime.GormConfig{
-				Dialect:          "sqlite",
-				Name:             gormSqliteDBName,
-				EnableSQLLogging: true,
-			}
-			gormConfigSqliteLite = &runtime.GormConfig{
-
-				Dialect:          "sqlite",
-				Name:             gormSqliteLiteDBName,
-				EnableSQLLogging: true,
-			}
-
-			// TODO - nothing needs to be done except perhaps to cleanup the temp files
-
-		case ProfileGocql:
-
-			gocqlOwnerConfig = &runtime.GocqlConfig{
-				Hosts:            "127.0.0.1:9142",
-				TLS:              true,
-				TLSKeyPath:       "./gocql/testcerts/client-cassandra-key.pem",
-				TLSCertPath:      "./gocql/testcerts/client-cassandra.pem",
-				TLSCAPath:        "./gocql/testcerts/root.pem",
-				EnableTracing:    false,
-				EnableCqlTracing: true,
-			}
-
-			gocqlConfig = &runtime.GocqlConfig{
-				Hosts:            "127.0.0.1:9142",
-				Keyspace:         gocqlKeyspace,
-				TLS:              true,
-				TLSKeyPath:       "./gocql/testcerts/client-app-key.pem",
-				TLSCertPath:      "./gocql/testcerts/client-app.pem",
-				TLSCAPath:        "./gocql/testcerts/root.pem",
-				EnableTracing:    false,
-				EnableCqlTracing: true,
-			}
-
-			gocqlLiteConfig = &runtime.GocqlConfig{
-				Hosts:            "127.0.0.1:9142",
-				Keyspace:         gocqlLiteKeyspace,
-				TLS:              true,
-				TLSKeyPath:       "./gocql/testcerts/client-app-key.pem",
-				TLSCertPath:      "./gocql/testcerts/client-app.pem",
-				TLSCAPath:        "./gocql/testcerts/root.pem",
-				EnableTracing:    false,
-				EnableCqlTracing: true,
-			}
-
-			var c cs.Config
-
-			c = cs.New()
-			setupRepositoryMode(c, repository.ModeGocql)
-			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGocqlOwner, gocqlOwnerConfig))
-			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGocqlApp, gocqlConfig))
-			setupGocqlIndex(c, gocqlConfig.Keyspace)
-
-			crypto.Check(setup.NewSetup(c).Setup(setup.Params{
-				FailOnExisting: true,
-			}))
-			res = append(res, c)
-
-			c = cs.New()
-			setupRepositoryMode(c, repository.ModeGocql)
-			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGocqlOwner, gocqlOwnerConfig))
-			c.AddSource(sources.FromValue(runtime.PrefixRepositoryGocqlApp, gocqlLiteConfig))
-			setupGocqlIndex(c, gocqlLiteConfig.Keyspace)
-
-			crypto.Check(setup.NewSetup(c).Setup(setup.Params{
-				FailOnExisting: true,
-			}))
-			res = append(res, c)
-
-		}
-
-	}
-
-	return res
-}
-
-func teardownAllDatabases(cs []cs.Config) {
-
-	for _, v := range cs {
-		crypto.Check(setup.NewSetup(v).Teardown())
-	}
-}
-
-*/
-
-type Done chan bool
-
-func NewDone() Done {
-	return make(chan bool, 1)
-}
-
-func (d Done) Done() {
-	d <- true
 }
 
 func Run(t *testing.T, fixtures []AppFixture, toInvoke any, toProvide ...any) {
@@ -712,8 +432,7 @@ type SelectAssertion struct {
 }
 
 type CrudTestFixture[E any, K comparable] struct {
-	EntityFactory      func() E
-	ArrangeContext     func(context.Context) context.Context
+	NewEntity          func() E
 	KeyExists          K
 	KeyMissing         K
 	ExtractKey         func(e E) K
@@ -726,126 +445,110 @@ type CrudTestFixture[E any, K comparable] struct {
 	AssertAfterUpdate  func(t *testing.T, e E)
 }
 
-/*
-func DoTestCrudRepository[E any, K comparable, T data.CrudTemplate[E, K]](t *testing.T,
-	profiles []string,
-	fixtureFactory func(symbols symbols.Symbols) *CrudTestFixture[E, K]) {
+func DoTestCrudRepository[E any, K comparable](t *testing.T,
+	ctx context.Context, unit data.CrudTemplate[E, K], fixture *CrudTestFixture[E, K]) {
 
-	harness := NewUnit[T]()
+	for _, sa := range fixture.SelectAssertions {
 
-	Run(t, profiles, func(t *testing.T, ctx context.Context, _ string) {
+		l, err := labels.Parse(sa.Expression)
 
-		unit, symbols := harness.UnitAndSymbols()
-
-		fixture := fixtureFactory(symbols)
-
-		ctx = fixture.ArrangeContext(ctx)
-
-		for _, sa := range fixture.SelectAssertions {
-
-			l, err := labels.Parse(sa.Expression)
-
-			if err != nil {
-				panic(err)
-			}
-
-			list, err := unit.ListAll(ctx, data.ListParams{
-				Selector: l,
-			})
-
-			require.NoError(t, err)
-			assert.Len(t, list.List, sa.ExpectedCount, sa.Expression)
+		if err != nil {
+			panic(err)
 		}
 
-		if fixture.ListAssertion != nil {
+		list, err := unit.ListAll(ctx, data.ListParams{
+			Selector: l,
+		})
 
-			la := fixture.ListAssertion
+		require.NoError(t, err)
+		assert.Len(t, list.List, sa.ExpectedCount, sa.Expression)
+	}
 
-			list, err := unit.ListAll(ctx, data.ListParams{})
+	if fixture.ListAssertion != nil {
 
-			require.NoError(t, err)
-			assert.Len(t, list.List, la.ExpectedCount)
+		la := fixture.ListAssertion
 
-			assert.NotNil(t, list.List)
-			for _, v := range list.List {
-				la.AssertListEntry(t, v)
-			}
+		list, err := unit.ListAll(ctx, data.ListParams{})
+
+		require.NoError(t, err)
+		assert.Len(t, list.List, la.ExpectedCount)
+
+		assert.NotNil(t, list.List)
+		for _, v := range list.List {
+			la.AssertListEntry(t, v)
 		}
+	}
 
-		got, err := unit.FindByKey(ctx, fixture.KeyMissing)
+	got, err := unit.FindByKey(ctx, fixture.KeyMissing)
+
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	got, err = unit.FindByKey(ctx, fixture.KeyExists)
+
+	require.NoError(t, err)
+	assert.NotNil(t, got)
+
+	fixture.AssertDetailEntry(t, got)
+
+	// Create with bad labels
+	got = fixture.NewEntity()
+	if HasLabels(got) {
+		fixture.ModifyBeforeCreate(got)
+		SetBadLabels(got)
+		err = unit.Create(ctx, got)
+		assert.Contains(t, err.Error(), "name part must consist")
+	}
+	// Create
+	got = fixture.NewEntity()
+	fixture.ModifyBeforeCreate(got)
+	err = unit.Create(ctx, got)
+	require.NoError(t, err)
+
+	fixture.AssertAfterCreate(t, got)
+
+	err = unit.Create(ctx, got)
+	assert.True(t, errors.Is(err, data.EntityAlreadyExists{}))
+
+	key := fixture.ExtractKey(got)
+
+	got2, err := unit.FindByKey(ctx, key)
+	require.NoError(t, err)
+
+	fixture.AssertAfterCreate(t, got2)
+
+	if fixture.AssertAfterUpdate != nil && fixture.ModifyBeforeUpdate != nil {
+
+		fixture.ModifyBeforeUpdate(got)
+
+		err = unit.Update(ctx, got)
 
 		require.NoError(t, err)
-		assert.Nil(t, got)
 
-		got, err = unit.FindByKey(ctx, fixture.KeyExists)
+		fixture.AssertAfterUpdate(t, got)
 
-		require.NoError(t, err)
-		assert.NotNil(t, got)
-
-		fixture.AssertDetailEntry(t, got)
-
-		// Create with bad labels
-		got = fixture.EntityFactory()
 		if HasLabels(got) {
-			fixture.ModifyBeforeCreate(got)
 			SetBadLabels(got)
-			err = unit.Create(ctx, got)
+			err = unit.Update(ctx, got)
 			assert.Contains(t, err.Error(), "name part must consist")
 		}
-		// Create
-		got = fixture.EntityFactory()
-		fixture.ModifyBeforeCreate(got)
-		err = unit.Create(ctx, got)
+
+		got2, err = unit.FindByKey(ctx, fixture.ExtractKey(got))
 		require.NoError(t, err)
+		fixture.AssertAfterUpdate(t, got2)
 
-		fixture.AssertAfterCreate(t, got)
+	}
 
-		err = unit.Create(ctx, got)
-		assert.True(t, errors.Is(err, data.EntityAlreadyExists{}))
+	err = unit.Delete(ctx, key)
+	require.NoError(t, err)
 
-		key := fixture.ExtractKey(got)
+	got3, err := unit.FindByKey(ctx, key)
 
-		got2, err := unit.FindByKey(ctx, key)
-		require.NoError(t, err)
+	require.NoError(t, err)
+	assert.Nil(t, got3)
 
-		fixture.AssertAfterCreate(t, got2)
-
-		if fixture.AssertAfterUpdate != nil && fixture.ModifyBeforeUpdate != nil {
-
-			fixture.ModifyBeforeUpdate(got)
-
-			err = unit.Update(ctx, got)
-
-			require.NoError(t, err)
-
-			fixture.AssertAfterUpdate(t, got)
-
-			if HasLabels(got) {
-				SetBadLabels(got)
-				err = unit.Update(ctx, got)
-				assert.Contains(t, err.Error(), "name part must consist")
-			}
-
-			got2, err = unit.FindByKey(ctx, fixture.ExtractKey(got))
-			require.NoError(t, err)
-			fixture.AssertAfterUpdate(t, got2)
-
-		}
-
-		err = unit.Delete(ctx, key)
-		require.NoError(t, err)
-
-		got3, err := unit.FindByKey(ctx, key)
-
-		require.NoError(t, err)
-		assert.Nil(t, got3)
-
-	}, harness.Options())
 }
 
-*/
-
-/*
 func SetBadLabels(got any) {
 
 	f := reflect.ValueOf(got).Elem().FieldByName("Labels")
@@ -853,8 +556,6 @@ func SetBadLabels(got any) {
 		" b a d k e y": "__--**&&bdValue",
 	}))
 }
-
-*/
 
 func HasLabels(got any) bool {
 	_, ok := reflect.TypeOf(got).Elem().FieldByName("Labels")

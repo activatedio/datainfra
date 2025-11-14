@@ -13,9 +13,8 @@ type AppFixtureResult struct {
 }
 
 type AppFixture interface {
-	BeforeAll()
 	GetApp(t *testing.T, toInvoke any, toProvide ...any) AppFixtureResult
-	AfterAll()
+	Cleanup() error
 }
 
 type ContextProvider interface {

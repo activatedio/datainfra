@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	GormDialectPsql   = "psql"
-	GormDialectSqlite = "sqlite"
+	GormDialectPostgres = "postgres"
+	GormDialectSqlite   = "sqlite"
 )
 
 // NewDB creates and configures a new Gorm database instance based on the provided DBConfig.
@@ -23,7 +23,7 @@ func NewDB(config *GormConfig) (*gorm.DB, error) {
 	var dialector gorm.Dialector
 
 	switch config.Dialect {
-	case GormDialectPsql:
+	case GormDialectPostgres:
 		dialector = postgres.New(postgres.Config{
 			DSN: fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
 				config.Host, config.Port, config.Username, config.Password, config.Name),
@@ -49,7 +49,7 @@ func NewDB(config *GormConfig) (*gorm.DB, error) {
 	}
 
 	switch config.Dialect {
-	case GormDialectPsql:
+	case GormDialectPostgres:
 	case GormDialectSqlite:
 		var _db *sql.DB
 		_db, err = db.DB()
