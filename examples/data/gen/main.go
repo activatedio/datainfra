@@ -20,10 +20,10 @@ func main() {
 		{
 			Type:       reflect.TypeFor[model.Product](),
 			Operations: data.OperationsCrud,
-		},
-		{
-			Type:       reflect.TypeFor[model.ProductCategory](),
-			Operations: data.OperationsCrud,
+			Implementations: []any{
+				data.Search{},
+				data.Associate{},
+			},
 		},
 	}
 

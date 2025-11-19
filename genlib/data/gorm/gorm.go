@@ -32,10 +32,6 @@ type FileMain struct {
 	InterfaceImport string
 }
 
-func (m *DirectoryMain) GetPackage() string {
-	return m.Package
-}
-
 type InternalSuperFields struct {
 	Entry *data.Entry
 }
@@ -61,12 +57,12 @@ type CrudTemplateParamsField struct{}
 func NewDataRegistry() genlib.Registry {
 
 	return genlib.NewRegistry().WithHandlerEntries(genlib.
-		NewHandlerEntries().AddDirectoryHandler(&DirectoryMain{}, func(dirPath string, r genlib.Registry, entry any) {
+		NewHandlerEntries().AddDirectoryHandler(genlib.NewKey[*DirectoryMain](), func(dirPath string, r genlib.Registry, entry any) {
 
 		m := entry.(*DirectoryMain)
 
 		for _, e := range m.Entries {
-			genlib.WithFile(m.GetPackage(), filepath.Join(dirPath, fmt.Sprintf("%s_gen.go", strcase.ToSnake(e.Type.Name()))), func(file *jen.File) {
+			genlib.WithFile(m.Package, filepath.Join(dirPath, fmt.Sprintf("%s_gen.go", strcase.ToSnake(e.Type.Name()))), func(file *jen.File) {
 				r.RunFileHandler(file, &FileMain{
 					InterfaceImport: m.InterfaceImport,
 					Entry:           &e,
@@ -75,7 +71,7 @@ func NewDataRegistry() genlib.Registry {
 		}
 
 		if m.GenerateIndex {
-			genlib.WithFile(m.GetPackage(), filepath.Join(dirPath, "index_gen.go"), func(file *jen.File) {
+			genlib.WithFile(m.Package, filepath.Join(dirPath, "index_gen.go"), func(file *jen.File) {
 				r.RunFileHandler(file, &IndexMain{
 					IndexModule: m.IndexModule,
 					Entries:     m.Entries,
@@ -83,7 +79,7 @@ func NewDataRegistry() genlib.Registry {
 			})
 		}
 
-	}).AddFileHandler(&IndexMain{}, func(f *jen.File, r genlib.Registry, entry any) {
+	}).AddFileHandler(genlib.NewKey[*IndexMain](), func(f *jen.File, r genlib.Registry, entry any) {
 
 		im := entry.(*IndexMain)
 
@@ -104,16 +100,10 @@ func NewDataRegistry() genlib.Registry {
 			),
 		)
 
-	}).AddFileHandler(&FileMain{}, func(f *jen.File, r genlib.Registry, entry any) {
+	}).AddFileHandler(genlib.NewKey[*FileMain](), func(f *jen.File, r genlib.Registry, entry any) {
 
 		fm := entry.(*FileMain)
 		d := fm.Entry
-
-		impl := data.ExtractImplementationFor[Implementation](d.Implementations)
-
-		if impl != nil {
-			r = impl.RegistryBuilder(r.Clone())
-		}
 
 		jh := d.GetJenHelper()
 		internalName := jh.StructName + "Internal"
@@ -169,14 +159,14 @@ func NewDataRegistry() genlib.Registry {
 		f.Func().Id(fmt.Sprintf("New%sRepository", jh.StructName)).Params(
 			jen.Id(paramsID).Id(paramsType),
 		).Qual(fm.InterfaceImport, jh.InterfaceName).Block(*ctor...).Line()
-	}).AddStatementHandler(&InternalSuperFields{}, func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*InternalSuperFields](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
 
 		fm := entry.(*InternalSuperFields)
 		d := fm.Entry
 		jh := d.GetJenHelper()
 		return s.Add(jen.Op("*").Add(jh.StructType))
 
-	}).AddStatementHandler(&Ctor{}, func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*Ctor](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
 
 		fm := entry.(*Ctor)
 		d := fm.Entry
@@ -204,9 +194,9 @@ func NewDataRegistry() genlib.Registry {
 		).Call(jen.Qual(ImportThis, "MappingTemplateParams").Types(
 			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
 		).Block(*tmplStmt...)))
-	}).AddStatementHandler(&ImplFieldAssignments{}, func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*ImplFieldAssignments](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
 		return s.Add(jen.Id("Template").Op(":").Id("template").Op(","))
-	}).AddStatementHandler(&ImplFields{}, func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*ImplFields](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFields)
 		d := _if.Entry
@@ -222,7 +212,7 @@ func NewDataRegistry() genlib.Registry {
 			jh.GenerateKeyCode(_if.InterfaceImport),
 		))
 
-	}).AddStatementHandler(&ImplFieldAssignments{}, func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*ImplFieldAssignments](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFieldAssignments)
 		d := _if.Entry
@@ -250,6 +240,16 @@ func NewDataRegistry() genlib.Registry {
 			crudParamsFields,
 		)).Op(",")
 
+	}).AddStatementHandler(genlib.NewKeyWithTest[*Ctor](func(in *Ctor) bool {
+		_, ok := data.GetImplementation[data.Search](in.Entry)
+		return ok
+	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+		return s.Add(jen.Commentf("implements the SearchHandler interface."))
+	}).AddStatementHandler(genlib.NewKeyWithTest[*Ctor](func(in *Ctor) bool {
+		_, ok := data.GetImplementation[data.Associate](in.Entry)
+		return ok
+	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+		return s.Add(jen.Commentf("implements the SearchHandler interface."))
 	}))
 
 }

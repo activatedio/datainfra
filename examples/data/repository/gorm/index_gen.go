@@ -6,5 +6,5 @@ import (
 )
 
 func Index() fx.Option {
-	return fx.Module("example.data.gorm", fx.Provide(gorm.NewDB, gorm.NewContextBuilder, NewCategoryRepository, NewProductRepository, NewProductCategoryRepository))
+	return fx.Module("example.data.gorm", fx.Provide(gorm.NewDB, gorm.NewContextBuilder, NewCategoryRepository, NewProductRepository))
 }

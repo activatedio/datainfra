@@ -23,57 +23,95 @@ type StatementHandler = func(s *jen.Statement, r Registry, entry any) *jen.State
 
 type HandlerEntries struct {
 	mu                sync.Mutex
-	DirectoryHandlers map[reflect.Type][]DirectoryHandler
-	FileHandlers      map[reflect.Type][]FileHandler
-	StatementHandlers map[reflect.Type][]StatementHandler
+	DirectoryHandlers map[reflect.Type][]entry[DirectoryHandler]
+	FileHandlers      map[reflect.Type][]entry[FileHandler]
+	StatementHandlers map[reflect.Type][]entry[StatementHandler]
+}
+
+type entry[H any] struct {
+	test    func(e any) bool
+	handler H
+}
+
+type Key struct {
+	t    reflect.Type
+	test func(e any) bool
+}
+
+func NewKey[E any]() Key {
+	return Key{
+		t: reflect.TypeFor[E](),
+		test: func(e any) bool {
+			return true
+		},
+	}
+}
+
+func NewKeyWithTest[E any](test func(in E) bool) Key {
+	return Key{
+		t: reflect.TypeFor[E](),
+		test: func(e any) bool {
+			tmp := e.(E)
+			return test(tmp)
+		},
+	}
 }
 
 func NewHandlerEntries() *HandlerEntries {
 	return &HandlerEntries{
-		DirectoryHandlers: make(map[reflect.Type][]DirectoryHandler),
-		FileHandlers:      make(map[reflect.Type][]FileHandler),
-		StatementHandlers: make(map[reflect.Type][]StatementHandler),
+		DirectoryHandlers: make(map[reflect.Type][]entry[DirectoryHandler]),
+		FileHandlers:      make(map[reflect.Type][]entry[FileHandler]),
+		StatementHandlers: make(map[reflect.Type][]entry[StatementHandler]),
 	}
 }
 
-func (h *HandlerEntries) AddDirectoryHandler(entry any, e DirectoryHandler) *HandlerEntries {
+func (h *HandlerEntries) AddDirectoryHandler(key Key, e DirectoryHandler) *HandlerEntries {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	es := h.DirectoryHandlers[reflect.TypeOf(entry)]
-	es = append(es, e)
-	h.DirectoryHandlers[reflect.TypeOf(entry)] = es
+	es := h.DirectoryHandlers[key.t]
+	es = append(es, entry[DirectoryHandler]{
+		test:    key.test,
+		handler: e,
+	})
+	h.DirectoryHandlers[key.t] = es
 	return h
 }
 
-func (h *HandlerEntries) AddFileHandler(entry any, e FileHandler) *HandlerEntries {
+func (h *HandlerEntries) AddFileHandler(key Key, e FileHandler) *HandlerEntries {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	es := h.FileHandlers[reflect.TypeOf(entry)]
-	es = append(es, e)
-	h.FileHandlers[reflect.TypeOf(entry)] = es
+	es := h.FileHandlers[key.t]
+	es = append(es, entry[FileHandler]{
+		test:    key.test,
+		handler: e,
+	})
+	h.FileHandlers[key.t] = es
 	return h
 }
 
-func (h *HandlerEntries) AddStatementHandler(entry any, e StatementHandler) *HandlerEntries {
+func (h *HandlerEntries) AddStatementHandler(key Key, e StatementHandler) *HandlerEntries {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	es := h.StatementHandlers[reflect.TypeOf(entry)]
-	es = append(es, e)
-	h.StatementHandlers[reflect.TypeOf(entry)] = es
+	es := h.StatementHandlers[key.t]
+	es = append(es, entry[StatementHandler]{
+		test:    key.test,
+		handler: e,
+	})
+	h.StatementHandlers[key.t] = es
 	return h
 }
 
 type registry struct {
-	directoryHandlers map[reflect.Type][]DirectoryHandler
-	fileHandlers      map[reflect.Type][]FileHandler
-	statementHandlers map[reflect.Type][]StatementHandler
+	directoryHandlers map[reflect.Type][]entry[DirectoryHandler]
+	fileHandlers      map[reflect.Type][]entry[FileHandler]
+	statementHandlers map[reflect.Type][]entry[StatementHandler]
 }
 
 func NewRegistry() Registry {
 	return &registry{
-		directoryHandlers: map[reflect.Type][]DirectoryHandler{},
-		fileHandlers:      map[reflect.Type][]FileHandler{},
-		statementHandlers: map[reflect.Type][]StatementHandler{},
+		directoryHandlers: map[reflect.Type][]entry[DirectoryHandler]{},
+		fileHandlers:      map[reflect.Type][]entry[FileHandler]{},
+		statementHandlers: map[reflect.Type][]entry[StatementHandler]{},
 	}
 }
 
@@ -82,22 +120,22 @@ type Registry interface {
 	Clone() Registry
 	WithHandlerEntries(entries ...*HandlerEntries) Registry
 	RunFileHandler(f *jen.File, entry any)
-	RunFilePathHandler(path string, entry WithPackage)
+	RunFilePathHandler(path string, entry any)
 	RunDirectoryPathHandler(path string, entry any)
 	BuildStatement(stmt *jen.Statement, entry any) *jen.Statement
 }
 
 func (r *registry) Clone() Registry {
 
-	dh := map[reflect.Type][]DirectoryHandler{}
+	dh := map[reflect.Type][]entry[DirectoryHandler]{}
 	for k, v := range r.directoryHandlers {
 		dh[k] = v
 	}
-	fh := map[reflect.Type][]FileHandler{}
+	fh := map[reflect.Type][]entry[FileHandler]{}
 	for k, v := range r.fileHandlers {
 		fh[k] = v
 	}
-	sh := map[reflect.Type][]StatementHandler{}
+	sh := map[reflect.Type][]entry[StatementHandler]{}
 	for k, v := range r.statementHandlers {
 		sh[k] = v
 	}
@@ -139,15 +177,19 @@ func (r *registry) WithHandlerEntries(entries ...*HandlerEntries) Registry {
 }
 
 func (r *registry) BuildStatement(stmt *jen.Statement, entry any) *jen.Statement {
-	for _, h := range r.statementHandlers[reflect.TypeOf(entry)] {
-		stmt = h(stmt, r, entry)
+	for _, e := range r.statementHandlers[reflect.TypeOf(entry)] {
+		if e.test(entry) {
+			stmt = e.handler(stmt, r, entry)
+		}
 	}
 	return stmt
 }
 
 func (r *registry) RunFileHandler(f *jen.File, entry any) {
-	for _, h := range r.fileHandlers[reflect.TypeOf(entry)] {
-		h(f, r, entry)
+	for _, e := range r.fileHandlers[reflect.TypeOf(entry)] {
+		if e.test(entry) {
+			e.handler(f, r, entry)
+		}
 	}
 }
 
@@ -162,12 +204,14 @@ func (r *registry) RunDirectoryPathHandler(path string, entry any) {
 	} else if !f.IsDir() {
 		panic(fmt.Sprintf("path %s is not a directory", path))
 	}
-	for _, h := range r.directoryHandlers[reflect.TypeOf(entry)] {
-		h(path, r, entry)
+	for _, e := range r.directoryHandlers[reflect.TypeOf(entry)] {
+		if e.test(entry) {
+			e.handler(path, r, entry)
+		}
 	}
 
 }
-func (r *registry) RunFilePathHandler(path string, entry WithPackage) {
+func (r *registry) RunFilePathHandler(path string, entry any) {
 
 	dir := filepath.Dir(path)
 	_, err := os.Stat(dir)
@@ -185,7 +229,15 @@ func (r *registry) RunFilePathHandler(path string, entry WithPackage) {
 		panic(fmt.Sprintf("path %s is not a file", path))
 	}
 
-	WithFile(entry.GetPackage(), path, func(f *jen.File) {
-		r.RunFileHandler(f, entry)
-	})
+	var a any
+	a = entry
+
+	if wp, ok := a.(WithPackage); ok {
+		WithFile(wp.GetPackage(), path, func(f *jen.File) {
+			r.RunFileHandler(f, entry)
+		})
+	} else {
+		panic(fmt.Sprintf("entry %s does not have a GetPackage() string method", reflect.TypeOf(entry).String()))
+	}
+
 }

@@ -13,45 +13,12 @@ import (
 	gormtesting "github.com/activatedio/datainfra/pkg/data/gorm/testing"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
 	gormmigrate "github.com/activatedio/datainfra/pkg/migrate/gorm"
-	gormsetup "github.com/activatedio/datainfra/pkg/setup/gorm"
 	"go.uber.org/fx"
 )
 
 var (
 	AppFixtures []datatesting.AppFixture
 )
-
-type GormTestingConfigResult struct {
-	fx.Out
-	GormConfig         *gorm2.GormConfig
-	SetupGormConfig    *gormsetup.OwnerGormConfig
-	MigratorGormConfig *gormmigrate.MigratorGormConfig
-	MigratorData       []gormmigrate.MigratorData
-}
-
-func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.GormConfig, migratorData []gormmigrate.MigratorData) func() GormTestingConfigResult {
-	return func() GormTestingConfigResult {
-		return GormTestingConfigResult{
-			GormConfig: appConfig,
-			SetupGormConfig: &gormsetup.OwnerGormConfig{
-				GormConfig: *ownerConfig,
-			},
-			MigratorGormConfig: &gormmigrate.MigratorGormConfig{
-				GormConfig: gorm2.GormConfig{
-					Dialect:                  ownerConfig.Dialect,
-					EnableDefaultTransaction: ownerConfig.EnableDefaultTransaction,
-					EnableSQLLogging:         ownerConfig.EnableSQLLogging,
-					Host:                     ownerConfig.Host,
-					Port:                     ownerConfig.Port,
-					Username:                 ownerConfig.Username,
-					Password:                 ownerConfig.Password,
-					Name:                     appConfig.Name,
-				},
-			},
-			MigratorData: migratorData,
-		}
-	}
-}
 
 func TestMain(m *testing.M) {
 
@@ -82,7 +49,7 @@ func TestMain(m *testing.M) {
 	}
 
 	AppFixtures = []datatesting.AppFixture{
-		gormtesting.NewAppFixture("sqlite", fx.Module("testing", gorm.Index(), fx.Provide(NewStaticGormTestingConfig(&gorm2.GormConfig{
+		gormtesting.NewAppFixture("sqlite", fx.Module("testing", gorm.Index(), fx.Provide(gormtesting.NewStaticGormTestingConfig(&gorm2.GormConfig{
 			Dialect:                  "sqlite",
 			EnableDefaultTransaction: true,
 			EnableSQLLogging:         true,
@@ -93,7 +60,7 @@ func TestMain(m *testing.M) {
 			EnableSQLLogging:         true,
 			Name:                     dbTemp.Name(),
 		}, migrations)))),
-		gormtesting.NewAppFixture("postgres", fx.Module("testing", gorm.Index(), fx.Provide(NewStaticGormTestingConfig(&gorm2.GormConfig{
+		gormtesting.NewAppFixture("postgres", fx.Module("testing", gorm.Index(), fx.Provide(gormtesting.NewStaticGormTestingConfig(&gorm2.GormConfig{
 			Dialect:                  "postgres",
 			Host:                     "127.0.0.1",
 			Port:                     5432,

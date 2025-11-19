@@ -29,7 +29,7 @@ func TestSetup_Success(t *testing.T) {
 				return gorm.SetupParams{
 					OwnerConfig: &gorm.OwnerGormConfig{
 						GormConfig: datagorm.GormConfig{
-							Dialect:  "psql",
+							Dialect:  "postgres",
 							Host:     "127.0.0.1",
 							Port:     5432,
 							Username: "postgres",
@@ -38,7 +38,7 @@ func TestSetup_Success(t *testing.T) {
 						},
 					},
 					AppConfig: &datagorm.GormConfig{
-						Dialect:  "psql",
+						Dialect:  "postgres",
 						Host:     "127.0.0.1",
 						Port:     5432,
 						Username: name,
