@@ -18,24 +18,26 @@ func (t *Types) GetPackage() string {
 	return t.Package
 }
 
+// Search adds search support
+type Search struct {
+}
+
+type Associate struct {
+}
+
 type InterfaceMethods struct {
 	Entry *Entry
 }
 
 func NewDataRegistry() genlib.Registry {
 
-	return genlib.NewRegistry().WithHandlerEntries(genlib.NewHandlerEntries().AddFileHandler(&Types{}, func(f *jen.File, r genlib.Registry, entry any) {
+	return genlib.NewRegistry().WithHandlerEntries(genlib.
+		NewHandlerEntries().AddFileHandler(genlib.NewKey[*Types](), func(f *jen.File, r genlib.Registry, entry any) {
 
 		t := entry.(*Types)
 		ds := t.Entries
 
 		for _, d := range ds {
-
-			impl := ExtractImplementationFor[Implementation](d.Implementations)
-
-			if impl != nil {
-				r = impl.RegistryBuilder(r.Clone())
-			}
 
 			jh := d.GetJenHelper()
 
@@ -51,7 +53,7 @@ func NewDataRegistry() genlib.Registry {
 			)
 		}
 
-	}).AddStatementHandler(&InterfaceMethods{}, func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*InterfaceMethods](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
 
 		i := entry.(*InterfaceMethods)
 		d := i.Entry
@@ -102,17 +104,19 @@ func NewDataRegistry() genlib.Registry {
 					jen.Error(),
 				))
 			}
-
-			/*
-				Create(ctx context.Context, entity E) error
-				Update(ctx context.Context, entity E) error
-				Delete(ctx context.Context, key K) error
-				DeleteEntity(ctx context.Context, entity E) error
-
-			*/
 		}
 
 		return s
+	}).AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+		_, ok := GetImplementation[Search](in.Entry)
+		return ok
+	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+		return s.Add(jen.Commentf("Need to add search methods here"))
+	}).AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+		_, ok := GetImplementation[Associate](in.Entry)
+		return ok
+	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+		return s.Add(jen.Commentf("Need to add associate"))
 	}))
 
 }

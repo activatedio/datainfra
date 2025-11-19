@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/activatedio/datainfra/pkg/data"
+	gorm2 "github.com/activatedio/datainfra/pkg/data/gorm"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
 	"github.com/activatedio/datainfra/pkg/migrate"
 	gormmigrate "github.com/activatedio/datainfra/pkg/migrate/gorm"
@@ -104,5 +105,37 @@ func NewAppFixture(name string, opt fx.Option) datatesting.AppFixture {
 	return &appFixture{
 		name: fmt.Sprintf("gorm: %s", name),
 		opt:  opt,
+	}
+}
+
+type GormTestingConfigResult struct {
+	fx.Out
+	GormConfig         *gorm2.GormConfig
+	SetupGormConfig    *gormsetup.OwnerGormConfig
+	MigratorGormConfig *gormmigrate.MigratorGormConfig
+	MigratorData       []gormmigrate.MigratorData
+}
+
+func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.GormConfig, migratorData []gormmigrate.MigratorData) func() GormTestingConfigResult {
+	return func() GormTestingConfigResult {
+		return GormTestingConfigResult{
+			GormConfig: appConfig,
+			SetupGormConfig: &gormsetup.OwnerGormConfig{
+				GormConfig: *ownerConfig,
+			},
+			MigratorGormConfig: &gormmigrate.MigratorGormConfig{
+				GormConfig: gorm2.GormConfig{
+					Dialect:                  ownerConfig.Dialect,
+					EnableDefaultTransaction: ownerConfig.EnableDefaultTransaction,
+					EnableSQLLogging:         ownerConfig.EnableSQLLogging,
+					Host:                     ownerConfig.Host,
+					Port:                     ownerConfig.Port,
+					Username:                 ownerConfig.Username,
+					Password:                 ownerConfig.Password,
+					Name:                     appConfig.Name,
+				},
+			},
+			MigratorData: migratorData,
+		}
 	}
 }

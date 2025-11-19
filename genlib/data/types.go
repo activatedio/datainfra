@@ -9,8 +9,6 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
-type RegistryBuilder func(r genlib.Registry) genlib.Registry
-
 // Entry is a descriptor for a data type
 type Entry struct {
 	Type       reflect.Type
@@ -19,17 +17,17 @@ type Entry struct {
 	Implementations []any
 }
 
-func (d Entry) GetJenHelper() JenHelper {
+func (e Entry) GetJenHelper() JenHelper {
 
 	res := JenHelper{
-		InterfaceName: fmt.Sprintf("%sRepository", d.Type.Name()),
-		StructName:    d.Type.Name(),
+		InterfaceName: fmt.Sprintf("%sRepository", e.Type.Name()),
+		StructName:    e.Type.Name(),
 	}
 
-	res.StructType = jen.Qual(d.Type.PkgPath(), d.Type.Name())
+	res.StructType = jen.Qual(e.Type.PkgPath(), e.Type.Name())
 
-	for i := 0; i < d.Type.NumField(); i++ {
-		f := d.Type.Field(i)
+	for i := 0; i < e.Type.NumField(); i++ {
+		f := e.Type.Field(i)
 		dt := ParseTag(f.Tag.Get("data"))
 		if dt.IsKey {
 			res.KeyFields = append(res.KeyFields, f)
@@ -42,14 +40,14 @@ func (d Entry) GetJenHelper() JenHelper {
 			code: jen.Qual(res.KeyFields[0].Type.PkgPath(), res.KeyFields[0].Type.Name()),
 		}
 	case len(res.KeyFields) > 1:
-		keyTypeName := fmt.Sprintf("%sKey", d.Type.Name())
+		keyTypeName := fmt.Sprintf("%sKey", e.Type.Name())
 		res.keyCodeGen = &localKeyCodeGenerator{
 			id: keyTypeName,
 		}
 
 		fs := &jen.Statement{}
 
-		fs.Add(jen.Commentf("%s is the key for %s", keyTypeName, d.Type.Name()))
+		fs.Add(jen.Commentf("%s is the key for %s", keyTypeName, e.Type.Name()))
 
 		for _, key := range res.KeyFields {
 			fs.Add(jen.Id(key.Name).Qual(key.Type.PkgPath(), key.Type.Name()))

@@ -3,16 +3,21 @@ package data_test
 import (
 	"testing"
 
+	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
-type LabelDummy struct {
-	Labels model.Labels
+type Dummy struct {
+	Value string
 }
 
-func (l *LabelDummy) GetLabels() model.Labels {
+type LabelDummy struct {
+	Labels data.Labels
+}
+
+func (l *LabelDummy) GetLabels() data.Labels {
 	return l.Labels
 }
 
@@ -69,7 +74,7 @@ func TestFilterByLabels(t *testing.T) {
 
 	for k, v := range cases {
 		t.Run(k, func(_ *testing.T) {
-			v.assert(repository.FilterByLabels(v.arrange()))
+			v.assert(data.FilterByLabels(v.arrange()))
 		})
 	}
 }
@@ -82,7 +87,7 @@ func TestFilterByLabelsNoLabels(t *testing.T) {
 		panic(err)
 	}
 
-	got, err := repository.FilterByLabels[*Dummy](lbls, []*Dummy{
+	got, err := data.FilterByLabels[*Dummy](lbls, []*Dummy{
 		{},
 		{},
 	})

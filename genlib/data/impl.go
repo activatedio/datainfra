@@ -1,23 +1,11 @@
 package data
 
-import "reflect"
+func GetImplementation[I any](e *Entry) (*I, bool) {
 
-type Implementation struct {
-	RegistryBuilder RegistryBuilder
-}
-
-func ExtractImplementationFor[T any](impls []any) *T {
-
-	target := reflect.TypeFor[T]()
-
-	for _, i := range impls {
-
-		switch reflect.TypeOf(i) {
-		case target:
-			tmp := i.(T)
-			return &tmp
+	for _, i := range e.Implementations {
+		if tmp, ok := i.(I); ok {
+			return &tmp, true
 		}
 	}
-
-	return nil
+	return nil, false
 }
