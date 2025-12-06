@@ -91,10 +91,10 @@ func TestProductRepository_Associate(t *testing.T) {
 
 		got, err := unit.ListByCategory(ctx, names[0], data.ListParams{})
 		r.NoError(err)
-		a.Len(got.List, 0)
+		a.Empty(got.List)
 
 		for _, s := range skus[:2] {
-			a.NoError(unit.AssociateCategories(ctx, s, names[:2], nil))
+			r.NoError(unit.AssociateCategories(ctx, s, names[:2], nil))
 		}
 
 		for _, n := range names[:2] {
@@ -104,7 +104,7 @@ func TestProductRepository_Associate(t *testing.T) {
 		}
 
 		for _, s := range skus[:2] {
-			a.NoError(unit.AssociateCategories(ctx, s, names[2:3], names[1:2]))
+			r.NoError(unit.AssociateCategories(ctx, s, names[2:3], names[1:2]))
 		}
 
 		for _, n := range []string{names[0], names[2]} {
@@ -114,13 +114,13 @@ func TestProductRepository_Associate(t *testing.T) {
 		}
 
 		for _, s := range skus {
-			a.NoError(unit.AssociateCategories(ctx, s, nil, names))
+			r.NoError(unit.AssociateCategories(ctx, s, nil, names))
 		}
 
 		for _, n := range names {
 			got, err = unit.ListByCategory(ctx, n, data.ListParams{})
 			r.NoError(err)
-			a.Len(got.List, 0)
+			a.Empty(got.List)
 		}
 
 	})

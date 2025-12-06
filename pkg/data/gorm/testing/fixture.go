@@ -88,9 +88,7 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 		})
 
 		return _err
-	})
-
-	invoke = append(invoke, toInvoke)
+	}, toInvoke)
 
 	app := fxtest.New(t, a.opt,
 		fx.Provide(NewContextProvider, gormsetup.NewSetup, gormmigrate.NewMigrator),
