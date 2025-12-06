@@ -23,7 +23,7 @@ func TestCategoryRepository_Crud(t *testing.T) {
 				ExtractKey: func(e *model.Category) string {
 					return e.Name
 				},
-				AssertDetailEntry: func(t *testing.T, e *model.Category) {
+				AssertDetailEntry: func(_ *testing.T, e *model.Category) {
 					a.NotEmpty(e.Name)
 					a.NotEmpty(e.Description)
 				},
@@ -31,13 +31,13 @@ func TestCategoryRepository_Crud(t *testing.T) {
 					e.Name = uuid.New().String()
 					e.Description = "initial"
 				},
-				AssertAfterCreate: func(t *testing.T, e *model.Category) {
+				AssertAfterCreate: func(_ *testing.T, e *model.Category) {
 					a.Equal("initial", e.Description)
 				},
 				ModifyBeforeUpdate: func(e *model.Category) {
 					e.Description = "modified"
 				},
-				AssertAfterUpdate: func(t *testing.T, e *model.Category) {
+				AssertAfterUpdate: func(_ *testing.T, e *model.Category) {
 					a.Equal("modified", e.Description)
 				},
 			})

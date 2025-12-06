@@ -10,12 +10,17 @@ import (
 	"github.com/iancoleman/strcase"
 )
 
-// ImportThis is a variable that defines the import path for the Gorm-related functionality within the repository.// ImportThis defines the string constant representing the import path for the GORM data package used in the application.
+// ImportThis defines the import path for the gorm package utilized by the data infrastructure library.
 var (
 	ImportThis = "github.com/activatedio/datainfra/pkg/data/gorm"
 )
 
-// DirectoryMain represents the main configuration structure for handling directory-based operations.
+// DirectoryMain represents a configuration for generating files and directories containing code based on supplied entries.
+// Package defines the package name for generated files.
+// InterfaceImport specifies the import path of the interfaces used by the entries.
+// GenerateIndex determines whether an index file should be generated.
+// IndexModule defines the name of the fx module for the generated index.
+// Entries is a collection of data Entry objects to process and use for code generation.
 type DirectoryMain struct {
 	Package         string
 	InterfaceImport string
@@ -24,63 +29,66 @@ type DirectoryMain struct {
 	Entries         []data.Entry
 }
 
-// IndexMain represents the main index structure containing a module name and a list of data entries.
+// IndexMain represents a collection of entries grouped under an index module, primarily used for fx module generation.
+// IndexModule refers to the module name used for fx injection.
+// Entries contains a list of data.Entry elements to be processed.
 type IndexMain struct {
 	IndexModule string
 	Entries     []data.Entry
 }
 
-// FileMain represents the main file structure that includes an entry metadata and an interface import string.
+// FileMain serves as a descriptor to facilitate code generation for a specific type using metadata from a data.Entry.
+// Entry holds type-specific metadata and related operations for code generation.
+// InterfaceImport specifies the import path for the target interface in the generated code.
 type FileMain struct {
 	Entry           *data.Entry
 	InterfaceImport string
 }
 
-// InternalSuperFields is a structure that wraps a pointer to a data.Entry instance, representing a data descriptor.
+// InternalSuperFields is a struct that contains a reference to a data.Entry, used for managing type-specific metadata.
 type InternalSuperFields struct {
 	Entry *data.Entry
 }
 
-// InternalFields represents a structure intended for internal data handling within the application.
+// InternalFields is an empty struct used as a marker or placeholder within the codebase.
 type InternalFields struct{}
 
-// InternalFunctions provides utility methods to handle the internal operations within the framework.// InternalFunctions is a struct used as a key or marker for handling specific internal functionalities in a registry.
+// InternalFunctions represents a set of functions used internally for processing specific tasks or transformations.
 type InternalFunctions struct{}
 
-// ImplFields represents implementation details and associated metadata for a specific interface or entry.
-// Entry refers to the data type descriptor, while InterfaceImport is the relevant interface's import path.
+// ImplFields represents the key fields required for generating implementations tied to a data entry.
 type ImplFields struct {
 	Entry           *data.Entry
 	InterfaceImport string
 }
 
-// ImplFieldAssignments is a structure that binds data entries with their corresponding interface imports.
-// Entry represents the specific data entry tied to the implementation.
-// InterfaceImport specifies the import path for the corresponding interface.
+// ImplFieldAssignments represents a structure used for assigning implementation-specific fields in generated code.
 type ImplFieldAssignments struct {
 	Entry           *data.Entry
 	InterfaceImport string
 }
 
-// CtorParamsFields is a placeholder type used for constructing parameters in dependency injection scenarios.
+// CtorParamsFields represents the fields required to construct certain implementations, including metadata and imports.
 type CtorParamsFields struct {
 	Entry           *data.Entry
 	InterfaceImport string
 }
 
-// Ctor represents a constructor structure containing a reference to a data.Entry instance.
+// Ctor represents a constructor wrapper containing a reference to a data entry for further processing or template generation.
 type Ctor struct {
 	Entry *data.Entry
 }
 
+// TemplateFields defines a structured type used for mapping data between internal and external representations.
 type TemplateFields struct{}
 
-// TemplateParamsField represents a struct used for defining parameters or fields within a template.
+// TemplateParamsField represents a struct used to manage or hold parameters for a specific template operation.
 type TemplateParamsField struct{}
 
-// CrudTemplateParamsField defines the structure for parameters used in CRUD templates.
+// CrudTemplateParamsField is a type used to define parameters for CRUD template configurations within a registry or handler.
 type CrudTemplateParamsField struct{}
 
+// addBaseHandlers configures and registers default directory, file, and statement handlers in the provided HandlerEntries.
 func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	return he.AddDirectoryHandler(genlib.NewKey[*DirectoryMain](), func(dirPath string, r genlib.Registry, entry any) {
@@ -105,7 +113,7 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 			})
 		}
 
-	}).AddFileHandler(genlib.NewKey[*IndexMain](), func(f *jen.File, r genlib.Registry, entry any) {
+	}).AddFileHandler(genlib.NewKey[*IndexMain](), func(f *jen.File, _ genlib.Registry, entry any) {
 
 		im := entry.(*IndexMain)
 
@@ -120,6 +128,7 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 			opts = opts.Add(jen.Id(fmt.Sprintf("New%sRepository", d.Type.Name())))
 		}
 
+		f.Commentf("Index collects constructors for implementations in an fx module")
 		f.Func().Id("Index").Params().Params(jen.Qual(data.ImportFX, "Option")).Block(
 			jen.Return(jen.Qual(data.ImportFX, "Module")).Call(
 				jen.Lit(im.IndexModule), jen.Qual(data.ImportFX, "Provide").Call(*opts...),
@@ -188,7 +197,7 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		f.Func().Id(fmt.Sprintf("New%sRepository", jh.StructName)).Params(
 			jen.Id(paramsID).Id(paramsType),
 		).Qual(fm.InterfaceImport, jh.InterfaceName).Block(*ctor...).Line()
-	}).AddStatementHandler(genlib.NewKey[*InternalSuperFields](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*InternalSuperFields](), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		fm := entry.(*InternalSuperFields)
 		d := fm.Entry
@@ -223,16 +232,18 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		).Call(jen.Qual(ImportThis, "MappingTemplateParams").Types(
 			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
 		).Block(*tmplStmt...)))
-	}).AddStatementHandler(genlib.NewKey[*ImplFieldAssignments](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*ImplFieldAssignments](), func(s *jen.Statement, _ genlib.Registry, _ any) *jen.Statement {
 		return s.Add(jen.Id("Template").Op(":").Id("template").Op(","))
 	})
 }
 
+// addCrudHandlers adds CRUD-specific statement handlers to the provided HandlerEntries based on certain entry conditions.
+// It registers handlers for CRUD template generation and field assignments if CRUD operations are applicable.
 func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
 		return data.HasImplementation[data.Crud](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFields)
 		d := _if.Entry
@@ -288,11 +299,12 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 }
 
+// addSearchHandlers registers statement handlers for search implementations in handler entries and returns the updated instance.
 func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
 		return data.HasImplementation[data.Search](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFields)
 		d := _if.Entry
@@ -304,7 +316,7 @@ func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	}).AddStatementHandler(genlib.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
 		return data.HasImplementation[data.Search](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFieldAssignments)
 		d := _if.Entry
@@ -323,6 +335,9 @@ func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 }
 
+// addAssociateHandlers adds handlers to facilitate the management of associate relationships between data entities.
+// It updates the given HandlerEntries by registering statement and file handlers for entries with 'Associate' implementations.
+// Returns the updated HandlerEntries instance.
 func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	type helper struct {
@@ -347,7 +362,7 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
 		return data.HasImplementation[data.Associate](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		f := entry.(*ImplFields)
 		h := toHelper(f.Entry)
@@ -356,7 +371,7 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	}).AddStatementHandler(genlib.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
 		return data.HasImplementation[data.Associate](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		f := entry.(*ImplFieldAssignments)
 		h := toHelper(f.Entry)
@@ -367,7 +382,7 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	}).AddStatementHandler(genlib.NewKeyWithTest[*CtorParamsFields](func(in *CtorParamsFields) bool {
 		return data.HasImplementation[data.Associate](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		f := entry.(*CtorParamsFields)
 		h := toHelper(f.Entry)
@@ -377,7 +392,7 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	}).AddFileHandler(genlib.NewKeyWithTest[*FileMain](func(in *FileMain) bool {
 		return data.HasImplementation[data.Associate](in.Entry)
-	}), func(f *jen.File, r genlib.Registry, entry any) {
+	}), func(f *jen.File, _ genlib.Registry, entry any) {
 
 		fm := entry.(*FileMain)
 		h := toHelper(fm.Entry)
@@ -419,11 +434,13 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 	})
 }
 
+// addFilterKeysHandlers registers statement handlers to process implementations of FilterKeys in the provided HandlerEntries.
+// It ensures compatibility with ImplFields and ImplFieldAssignments types and handles filters by generating appropriate templates.
 func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
 		return data.HasImplementation[data.FilterKeys](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFields)
 		d := _if.Entry
@@ -433,7 +450,7 @@ func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	}).AddStatementHandler(genlib.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
 		return data.HasImplementation[data.FilterKeys](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFieldAssignments)
 		d := _if.Entry
@@ -445,6 +462,7 @@ func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		typs.Add(jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName), jh.GenerateKeyCode(_if.InterfaceImport))
 
 		if len(jh.Keys) != 1 {
+			fmt.Println(jh.Keys)
 			panic(fmt.Sprintf("FilterKeys only supports a single key, found %d", len(jh.Keys)))
 		}
 
@@ -459,11 +477,13 @@ func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 }
 
+// addListByAssociatedKeyHandlers adds file handlers for ListByAssociatedKey functionality in the provided HandlerEntries.
+// It generates methods to list items by associated keys, ensuring constraints like the presence of a single key.
 func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	return he.AddFileHandler(genlib.NewKeyWithTest[*FileMain](func(in *FileMain) bool {
 		return data.HasImplementation[data.ListByAssociatedKey](in.Entry)
-	}), func(f *jen.File, r genlib.Registry, entry any) {
+	}), func(f *jen.File, _ genlib.Registry, entry any) {
 
 		i := entry.(*FileMain)
 
@@ -534,7 +554,7 @@ func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEn
 	})
 }
 
-// NewDataRegistry creates a new data registry configured with custom handler entries for directories, files, and statements.
+// NewDataRegistry initializes a new genlib.Registry with predefined sets of handler entries for various operations.
 func NewDataRegistry() genlib.Registry {
 
 	he := genlib.NewHandlerEntries()

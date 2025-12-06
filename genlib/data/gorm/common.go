@@ -1,6 +1,6 @@
 package gorm
 
 const (
-	// ImportFX is the import path for fx
+	// ImportGorm is the import path for the gorm package
 	ImportGorm = "gorm.io/gorm"
 )

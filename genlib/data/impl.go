@@ -11,6 +11,7 @@ func GetImplementation[I any](e *Entry) *I {
 	return nil
 }
 
+// HasImplementation returns true if the entry has an implementation of the given type
 func HasImplementation[I any](e *Entry) bool {
 	return GetImplementation[I](e) != nil
 }

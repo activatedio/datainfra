@@ -6,8 +6,11 @@ import (
 )
 
 var (
+	// QualCtx is a qualified context.Context type.
 	QualCtx = jen.Qual("context", "Context")
-	IdError = jen.Id("error")
+	// IDError is a qualified error type.
+	IDError = jen.Id("error")
 
+	// Pl is a pluralizer.
 	Pl = pluralize.NewClient()
 )

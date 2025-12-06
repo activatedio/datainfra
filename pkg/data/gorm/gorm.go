@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	GormDialectPostgres = "postgres"
-	GormDialectSqlite   = "sqlite"
+	// DialectPostgres is the dialect name for PostgreSQL databases.
+	DialectPostgres = "postgres"
+	// DialectSqlite is the dialect name for SQLite databases.
+	DialectSqlite = "sqlite"
 )
 
 // NewDB creates and configures a new Gorm database instance based on the provided DBConfig.
@@ -23,12 +25,13 @@ func NewDB(config *Config) (*gorm.DB, error) {
 	var dialector gorm.Dialector
 
 	switch config.Dialect {
-	case GormDialectPostgres:
+
+	case DialectPostgres:
 		dialector = postgres.New(postgres.Config{
 			DSN: fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
 				config.Host, config.Port, config.Username, config.Password, config.Name),
 		})
-	case GormDialectSqlite:
+	case DialectSqlite:
 		dialector = sqlite.Open(fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", config.Name))
 	default:
 		panic("unexpected dialect " + config.Dialect)
@@ -49,8 +52,8 @@ func NewDB(config *Config) (*gorm.DB, error) {
 	}
 
 	switch config.Dialect {
-	case GormDialectPostgres:
-	case GormDialectSqlite:
+	case DialectPostgres:
+	case DialectSqlite:
 		var _db *sql.DB
 		_db, err = db.DB()
 		if err != nil {
