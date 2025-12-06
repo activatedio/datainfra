@@ -26,6 +26,12 @@ jobs:
           version: ${{ env.GOLANGCI_VERSION }}
 
   unit-test:
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: supersecret
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
