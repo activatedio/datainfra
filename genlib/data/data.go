@@ -41,6 +41,10 @@ type Associate struct {
 type FilterKeys struct {
 }
 
+type ListByAssociatedKey struct {
+	AssociatedType reflect.Type
+}
+
 // InterfaceMethods represents metadata for generating interface methods for a specific entry type.
 type InterfaceMethods struct {
 	Entry *Entry
@@ -205,6 +209,40 @@ func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 }
 
+func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+
+	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+		return HasImplementation[ListByAssociatedKey](in.Entry)
+	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+
+		i := entry.(*InterfaceMethods)
+
+		a := GetImplementation[ListByAssociatedKey](i.Entry)
+
+		jh := i.Entry.GetJenHelper()
+
+		_e := &Entry{
+			Type: a.AssociatedType,
+		}
+
+		jha := _e.GetJenHelper()
+
+		cka := jha.GenerateKeyCode("")
+
+		return s.Add(jen.Id(fmt.Sprintf("ListBy%s", jha.StructName)).Params(
+			jen.Id("ctx").Add(QualCtx),
+			jen.Id("key").Add(cka),
+			jen.Id("params").Qual(ImportThis, "ListParams"),
+		).Params(
+			jen.Op("*").Qual(ImportThis, "List").Types(
+				jen.Op("*").Add(jh.StructType),
+			),
+			jen.Error(),
+		))
+
+	})
+}
+
 // NewDataRegistry initializes a new data registry with custom handler entries for files, statements, and interface methods.
 func NewDataRegistry() genlib.Registry {
 
@@ -212,7 +250,9 @@ func NewDataRegistry() genlib.Registry {
 	he = addBaseHandlers(he)
 	he = addCrudHandlers(he)
 	he = addSearchHandlers(he)
+	he = addAssociateHandlers(he)
 	he = addFilterKeysHandlers(he)
+	he = addListByAssociatedKeyHandlers(he)
 
 	return genlib.NewRegistry().WithHandlerEntries(he)
 

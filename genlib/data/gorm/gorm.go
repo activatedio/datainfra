@@ -392,14 +392,23 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		removeID := func() *jen.Statement { return jen.Id("remove") }
 		ctxID := func() *jen.Statement { return jen.Id("ctx") }
 
+		if len(h.parentHelper.Keys) != 1 {
+			panic(fmt.Sprintf("Associate only supports a single key, found %d", len(h.parentHelper.Keys)))
+		}
+		if len(h.childHelper.Keys) != 1 {
+			panic(fmt.Sprintf("Associate only supports a single key, found %d", len(h.childHelper.Keys)))
+		}
+
 		f.Func().Params(receiverID().Op("*").Id(implName)).Id(
 			fmt.Sprintf("Associate%s", pl.Plural(h.childHelper.StructName))).Params(ctxID().Add(data.QualCtx), keyID().Add(kc), addID().Index().Add(ckc), removeID().Index().Add(ckc)).
 			Params(jen.Error()).
 			Block(jen.Return(
 				jen.Qual(ImportThis, "Associate").Types(kc, ckc).Call(ctxID(), jen.Qual(ImportThis, "AssociateParams").Types(kc, ckc).Block(
 					jen.Id("AssociationTable").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix, h.childHelper.TableName)).Op(","),
-					jen.Id("ParentColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix, "id")).Op(","),
-					jen.Id("ChildColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.childHelper.TablePrefix, "id")).Op(","),
+					jen.Id("ParentColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix,
+						h.parentHelper.Keys[0].Name)).Op(","),
+					jen.Id("ChildColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.childHelper.TablePrefix,
+						h.childHelper.Keys[0].Name)).Op(","),
 					jen.Id("ParentKey").Op(":").Add(keyID()).Op(","),
 					jen.Id("Add").Op(":").Add(addID()).Op(","),
 					jen.Id("Remove").Op(":").Add(removeID()).Op(","),
@@ -450,6 +459,81 @@ func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 }
 
+func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+
+	return he.AddFileHandler(genlib.NewKeyWithTest[*FileMain](func(in *FileMain) bool {
+		return data.HasImplementation[data.ListByAssociatedKey](in.Entry)
+	}), func(f *jen.File, r genlib.Registry, entry any) {
+
+		i := entry.(*FileMain)
+
+		a := data.GetImplementation[data.ListByAssociatedKey](i.Entry)
+
+		jh := GetGormJenHelper(i.Entry)
+
+		_e := &data.Entry{
+			Type: a.AssociatedType,
+		}
+
+		jha := GetGormJenHelper(_e)
+
+		cka := jha.GenerateKeyCode("")
+
+		receiverID := func() *jen.Statement { return jen.Id("r") }
+
+		implName := strcase.ToLowerCamel(jh.StructName) + "RepositoryImpl"
+
+		if len(jh.Keys) != 1 || len(jha.Keys) != 1 {
+			panic(fmt.Sprintf("ListByAssociatedKey only supports a single key, found %d and %d", len(jh.Keys), len(jha.Keys)))
+		}
+
+		ctxName := "ctx"
+		keyName := "key"
+		paramsName := "params"
+		txName := "tx"
+		thisTable := jh.TableName
+		assocatedTable := fmt.Sprintf("%s_%s", jh.TablePrefix, jha.TableName)
+		thisAssocatedKey := fmt.Sprintf("%s_%s", jh.TablePrefix, jh.Keys[0].Name)
+		otherAssocatedKey := fmt.Sprintf("%s_%s", jha.TablePrefix, jha.Keys[0].Name)
+
+		f.Func().Params(receiverID().Op("*").Id(implName)).Id(fmt.Sprintf("ListBy%s", jha.StructName)).Params(
+			jen.Id(ctxName).Add(data.QualCtx),
+			jen.Id(keyName).Add(cka),
+			jen.Id(paramsName).Qual(data.ImportThis, "ListParams"),
+		).Params(
+			jen.Op("*").Qual(data.ImportThis, "List").Types(
+				jen.Op("*").Add(jh.StructType),
+			),
+			jen.Error(),
+		).Block(
+			jen.Return(receiverID().Dot("Template").Dot("DoList").Call(
+				jen.Id(ctxName),
+				jen.Func().Params(
+					jen.Id(txName).Op("*").Qual(ImportGorm, "DB")).Params(jen.Op("*").Qual(ImportGorm, "DB")).Block(
+					jen.Return(jen.Id(txName).Dot("Joins").Call(jen.Lit(
+						fmt.Sprintf("INNER JOIN %s ON %s.%s = %s.%s",
+							assocatedTable,
+							assocatedTable,
+							thisAssocatedKey,
+							thisTable,
+							jh.Keys[0].Name,
+						),
+					)).
+						Dot("Where").Call(jen.Lit(
+						fmt.Sprintf("%s.%s=?",
+							assocatedTable, otherAssocatedKey,
+						),
+					),
+						jen.Id(keyName),
+					)),
+				),
+				jen.Id(paramsName),
+			),
+			),
+		)
+	})
+}
+
 // NewDataRegistry creates a new data registry configured with custom handler entries for directories, files, and statements.
 func NewDataRegistry() genlib.Registry {
 
@@ -460,6 +544,7 @@ func NewDataRegistry() genlib.Registry {
 	he = addSearchHandlers(he)
 	he = addAssociateHandlers(he)
 	he = addFilterKeysHandlers(he)
+	he = addListByAssociatedKeyHandlers(he)
 
 	return genlib.NewRegistry().WithHandlerEntries(he)
 }
