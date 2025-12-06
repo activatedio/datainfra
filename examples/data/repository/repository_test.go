@@ -48,6 +48,12 @@ func TestMain(m *testing.M) {
 		},
 	}
 
+	postgresHost := os.Getenv("POSTGRES_HOST")
+
+	if postgresHost == "" {
+		postgresHost = "127.0.0.1"
+	}
+
 	AppFixtures = []datatesting.AppFixture{
 		gormtesting.NewAppFixture("sqlite", fx.Module("testing", gorm.Index(), fx.Provide(gormtesting.NewStaticGormTestingConfig(&gorm2.Config{
 			Dialect:                  "sqlite",
@@ -62,7 +68,7 @@ func TestMain(m *testing.M) {
 		}, migrations)))),
 		gormtesting.NewAppFixture("postgres", fx.Module("testing", gorm.Index(), fx.Provide(gormtesting.NewStaticGormTestingConfig(&gorm2.Config{
 			Dialect:                  "postgres",
-			Host:                     "127.0.0.1",
+			Host:                     postgresHost,
 			Port:                     5432,
 			Username:                 "postgres",
 			Password:                 "supersecret",
@@ -71,7 +77,7 @@ func TestMain(m *testing.M) {
 			Name:                     "postgres",
 		}, &gorm2.Config{
 			Dialect:                  "postgres",
-			Host:                     "127.0.0.1",
+			Host:                     postgresHost,
 			Port:                     5432,
 			EnableDefaultTransaction: true,
 			EnableSQLLogging:         true,
