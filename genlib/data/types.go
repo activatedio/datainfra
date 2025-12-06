@@ -9,14 +9,14 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
-// Entry is a descriptor for a data type
+// Entry represents a data descriptor containing type metadata, supported operations, and implementation-specific details.
 type Entry struct {
-	Type       reflect.Type
-	Operations *genlib.Set[Operation]
+	Type reflect.Type
 	// Implementations are implementation-specific parameters
 	Implementations []any
 }
 
+// GetJenHelper generates a JenHelper object for the Entry, which includes interface and struct metadata and key field analysis.
 func (e Entry) GetJenHelper() JenHelper {
 
 	res := JenHelper{
@@ -59,17 +59,19 @@ func (e Entry) GetJenHelper() JenHelper {
 	return res
 }
 
+// Tag represents metadata information, where IsKey indicates whether the tag is a key.
 type Tag struct {
 	IsKey bool
 }
 
+// ParseTag parses a given tag string and returns a Tag object with its properties set based on the parsed content.
+// If the tag contains "key", the IsKey property of the returned Tag is set to true.
 func ParseTag(tag string) Tag {
 
 	t := Tag{}
 
 	for _, v := range strings.Split(tag, ",") {
-		switch {
-		case v == "key":
+		if v == "key" {
 			t.IsKey = true
 		}
 	}
@@ -77,6 +79,7 @@ func ParseTag(tag string) Tag {
 	return t
 }
 
+// keyCodeGenerator defines behavior for generating key code based on import context and data interface.
 type keyCodeGenerator interface {
 	// Generate generates a key code based on the relative import of the data interface type. For a local generation
 	// this import will be blank.  The generator generates the code for the key, which may or may not use the
@@ -84,18 +87,22 @@ type keyCodeGenerator interface {
 	Generate(interfaceImport string) jen.Code
 }
 
+// fixedKeyCodeGenerator is a type responsible for generating fixed key codes using a predefined `jen.Code` instance.
 type fixedKeyCodeGenerator struct {
 	code jen.Code
 }
 
+// Generate returns a pre-defined jen.Code object associated with the fixedKeyCodeGenerator instance.
 func (f *fixedKeyCodeGenerator) Generate(interfaceImport string) jen.Code {
 	return f.code
 }
 
+// localKeyCodeGenerator generates code for a locally scoped key type with a specified identifier.
 type localKeyCodeGenerator struct {
 	id string
 }
 
+// Generate constructs a code representation of the identifier, optionally qualifying it with the given import path.
 func (l *localKeyCodeGenerator) Generate(interfaceImport string) jen.Code {
 	if interfaceImport == "" {
 		return jen.Id(l.id)
@@ -104,6 +111,7 @@ func (l *localKeyCodeGenerator) Generate(interfaceImport string) jen.Code {
 	}
 }
 
+// JenHelper is a structure designed to aid in generating Go code and managing metadata for data objects.
 type JenHelper struct {
 	InterfaceName string
 	StructType    jen.Code
@@ -113,25 +121,35 @@ type JenHelper struct {
 	keyStmt       *jen.Statement
 }
 
+// GenerateKeyCode generates a key code for the given interface import using the keyCodeGen generator field of JenHelper.
+// Returns a jen.Code instance representing the generated code for the provided interface import.
 func (g JenHelper) GenerateKeyCode(interfaceImport string) jen.Code {
 	return g.keyCodeGen.Generate(interfaceImport)
 }
 
+// Operation represents a specific action or operation identified by a unique slug.
 type Operation struct {
 	slug string
 }
 
+// String returns the string representation of an Operation by providing its slug value.
 func (o Operation) String() string {
 	return o.slug
 }
 
 var (
+	// OperationFindByKey defines an operation for finding items by a key.
 	OperationFindByKey = Operation{"findByKey"}
-	OperationList      = Operation{"list"}
-	OperationCreate    = Operation{"create"}
-	OperationUpdate    = Operation{"update"}
-	OperationDelete    = Operation{"delete"}
-	OperationsCrud     = genlib.NewFrozenSet(
+	// OperationList defines an operation for listing items.
+	OperationList = Operation{"list"}
+	// OperationCreate defines an operation for creating items.
+	OperationCreate = Operation{"create"}
+	// OperationUpdate defines an operation for updating items.
+	OperationUpdate = Operation{"update"}
+	// OperationDelete defines an operation for deleting items.
+	OperationDelete = Operation{"delete"}
+	// OperationsCrud represents a frozen set containing all CRUD operations.
+	OperationsCrud = genlib.NewFrozenSet(
 		OperationFindByKey, OperationList, OperationCreate, OperationUpdate, OperationDelete,
 	)
 )

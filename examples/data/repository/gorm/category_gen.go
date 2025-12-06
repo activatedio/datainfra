@@ -17,6 +17,7 @@ type CategoryInternal struct {
 type categoryRepositoryImpl struct {
 	Template gorm.MappingTemplate[*model.Category, *CategoryInternal]
 	data.CrudTemplate[*model.Category, string]
+	data.FilterKeysTemplate[string]
 }
 
 // CategoryRepositoryParams are the parameters for CategoryRepository
@@ -25,7 +26,7 @@ type CategoryRepositoryParams struct {
 }
 
 // NewCategoryRepository creates a new CategoryRepository
-func NewCategoryRepository(_ CategoryRepositoryParams) repository.CategoryRepository {
+func NewCategoryRepository(CategoryRepositoryParams) repository.CategoryRepository {
 	template := gorm.NewMappingTemplate[*model.Category, *CategoryInternal](gorm.MappingTemplateParams[*model.Category, *CategoryInternal]{
 		Table: "categories",
 		ToInternal: func(m *model.Category) *CategoryInternal {
@@ -38,9 +39,14 @@ func NewCategoryRepository(_ CategoryRepositoryParams) repository.CategoryReposi
 		},
 	})
 	return &categoryRepositoryImpl{
-		Template: template, CrudTemplate: gorm.NewMappingCrudTemplate[*model.Category, *CategoryInternal, string](gorm.MappingCrudTemplateImplOptions[*model.Category, *CategoryInternal, string]{
+		Template: template,
+		CrudTemplate: gorm.NewMappingCrudTemplate[*model.Category, *CategoryInternal, string](gorm.MappingCrudTemplateImplOptions[*model.Category, *CategoryInternal, string]{
 			Template:    template,
 			FindBuilder: gorm.SingleFindBuilder[string]("categories.Name"),
+		}),
+		FilterKeysTemplate: gorm.NewMappingFilterKeysTemplate[*model.Category, *CategoryInternal, string](gorm.MappingFilterKeysTemplateImplOptions[*model.Category, *CategoryInternal, string]{
+			Template:   template,
+			FindColumn: "name",
 		}),
 	}
 }

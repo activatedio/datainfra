@@ -1,3 +1,4 @@
+// Package main contains the main method for generation
 package main
 
 import (
@@ -14,15 +15,24 @@ func main() {
 
 	ds := []data.Entry{
 		{
-			Type:       reflect.TypeFor[model.Category](),
-			Operations: data.OperationsCrud,
+			Type: reflect.TypeFor[model.Category](),
+			Implementations: []any{
+				data.Crud{
+					Operations: data.OperationsCrud,
+				},
+				data.FilterKeys{},
+			},
 		},
 		{
-			Type:       reflect.TypeFor[model.Product](),
-			Operations: data.OperationsCrud,
+			Type: reflect.TypeFor[model.Product](),
 			Implementations: []any{
+				data.Crud{
+					Operations: data.OperationsCrud,
+				},
 				data.Search{},
-				data.Associate{},
+				data.Associate{
+					ChildType: reflect.TypeFor[model.Category](),
+				},
 			},
 		},
 	}

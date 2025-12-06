@@ -49,18 +49,18 @@ func TestMain(m *testing.M) {
 	}
 
 	AppFixtures = []datatesting.AppFixture{
-		gormtesting.NewAppFixture("sqlite", fx.Module("testing", gorm.Index(), fx.Provide(gormtesting.NewStaticGormTestingConfig(&gorm2.GormConfig{
+		gormtesting.NewAppFixture("sqlite", fx.Module("testing", gorm.Index(), fx.Provide(gormtesting.NewStaticGormTestingConfig(&gorm2.Config{
 			Dialect:                  "sqlite",
 			EnableDefaultTransaction: true,
 			EnableSQLLogging:         true,
 			Name:                     dbTemp.Name(),
-		}, &gorm2.GormConfig{
+		}, &gorm2.Config{
 			Dialect:                  "sqlite",
 			EnableDefaultTransaction: true,
 			EnableSQLLogging:         true,
 			Name:                     dbTemp.Name(),
 		}, migrations)))),
-		gormtesting.NewAppFixture("postgres", fx.Module("testing", gorm.Index(), fx.Provide(gormtesting.NewStaticGormTestingConfig(&gorm2.GormConfig{
+		gormtesting.NewAppFixture("postgres", fx.Module("testing", gorm.Index(), fx.Provide(gormtesting.NewStaticGormTestingConfig(&gorm2.Config{
 			Dialect:                  "postgres",
 			Host:                     "127.0.0.1",
 			Port:                     5432,
@@ -69,7 +69,7 @@ func TestMain(m *testing.M) {
 			EnableDefaultTransaction: true,
 			EnableSQLLogging:         true,
 			Name:                     "postgres",
-		}, &gorm2.GormConfig{
+		}, &gorm2.Config{
 			Dialect:                  "postgres",
 			Host:                     "127.0.0.1",
 			Port:                     5432,

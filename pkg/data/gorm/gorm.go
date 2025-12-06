@@ -18,7 +18,7 @@ const (
 )
 
 // NewDB creates and configures a new Gorm database instance based on the provided DBConfig.
-func NewDB(config *GormConfig) (*gorm.DB, error) {
+func NewDB(config *Config) (*gorm.DB, error) {
 
 	var dialector gorm.Dialector
 

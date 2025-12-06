@@ -1,3 +1,4 @@
+// Package migrations contains migration files
 package migrations
 
 import "embed"

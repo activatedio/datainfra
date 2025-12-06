@@ -1,6 +1,7 @@
 package gorm
 
-type GormConfig struct {
+// Config defines the configuration for a gorm database connection.
+type Config struct {
 	Dialect                  string
 	EnableDefaultTransaction bool
 	EnableSQLLogging         bool

@@ -110,21 +110,21 @@ func NewAppFixture(name string, opt fx.Option) datatesting.AppFixture {
 
 type GormTestingConfigResult struct {
 	fx.Out
-	GormConfig         *gorm2.GormConfig
+	GormConfig         *gorm2.Config
 	SetupGormConfig    *gormsetup.OwnerGormConfig
 	MigratorGormConfig *gormmigrate.MigratorGormConfig
 	MigratorData       []gormmigrate.MigratorData
 }
 
-func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.GormConfig, migratorData []gormmigrate.MigratorData) func() GormTestingConfigResult {
+func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.Config, migratorData []gormmigrate.MigratorData) func() GormTestingConfigResult {
 	return func() GormTestingConfigResult {
 		return GormTestingConfigResult{
 			GormConfig: appConfig,
 			SetupGormConfig: &gormsetup.OwnerGormConfig{
-				GormConfig: *ownerConfig,
+				Config: *ownerConfig,
 			},
 			MigratorGormConfig: &gormmigrate.MigratorGormConfig{
-				GormConfig: gorm2.GormConfig{
+				GormConfig: gorm2.Config{
 					Dialect:                  ownerConfig.Dialect,
 					EnableDefaultTransaction: ownerConfig.EnableDefaultTransaction,
 					EnableSQLLogging:         ownerConfig.EnableSQLLogging,

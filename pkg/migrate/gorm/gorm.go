@@ -10,17 +10,20 @@ import (
 	"go.uber.org/fx"
 )
 
+// MigratorData represents a migration configuration including its name, file system, and relative path.
 type MigratorData struct {
 	Name string
 	FS   fs.FS
 	Path string
 }
 
+// migrator handles database migration processes using the provided configuration and migration data.
 type migrator struct {
-	config *datagorm.GormConfig
+	config *datagorm.Config
 	data   []MigratorData
 }
 
+// Migrate executes database migrations using the configuration and migration data defined in the migrator instance.
 func (m *migrator) Migrate() error {
 
 	gdb, err := datagorm.NewDB(m.config)
@@ -52,12 +55,14 @@ func (m *migrator) Migrate() error {
 
 }
 
+// MigratorParams defines the dependencies required to initialize a database migrator, including configuration and migration data.
 type MigratorParams struct {
 	fx.In
 	Config *MigratorGormConfig
 	Data   []MigratorData
 }
 
+// NewMigrator creates a new instance of migrate.Migrator using the provided MigratorParams configuration.
 func NewMigrator(params MigratorParams) migrate.Migrator {
 	return &migrator{
 		config: &params.Config.GormConfig,
