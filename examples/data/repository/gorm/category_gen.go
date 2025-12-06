@@ -1,11 +1,13 @@
 package gorm
 
 import (
+	"context"
 	model "github.com/activatedio/datainfra/examples/data/model"
 	repository "github.com/activatedio/datainfra/examples/data/repository"
 	data "github.com/activatedio/datainfra/pkg/data"
 	gorm "github.com/activatedio/datainfra/pkg/data/gorm"
 	fx "go.uber.org/fx"
+	gorm1 "gorm.io/gorm"
 )
 
 // CategoryInternal is the internal representation of Category
@@ -49,4 +51,10 @@ func NewCategoryRepository(CategoryRepositoryParams) repository.CategoryReposito
 			FindColumn: "name",
 		}),
 	}
+}
+
+func (r *categoryRepositoryImpl) ListByProduct(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Category], error) {
+	return r.Template.DoList(ctx, func(tx *gorm1.DB) *gorm1.DB {
+		return tx.Joins("INNER JOIN category_products ON category_products.category_name = categories.name").Where("category_products.product_sku=?", key)
+	}, params)
 }

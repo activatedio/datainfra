@@ -21,6 +21,9 @@ func main() {
 					Operations: data.OperationsCrud,
 				},
 				data.FilterKeys{},
+				data.ListByAssociatedKey{
+					AssociatedType: reflect.TypeFor[model.Product](),
+				},
 			},
 		},
 		{
@@ -32,6 +35,9 @@ func main() {
 				data.Search{},
 				data.Associate{
 					ChildType: reflect.TypeFor[model.Category](),
+				},
+				data.ListByAssociatedKey{
+					AssociatedType: reflect.TypeFor[model.Category](),
 				},
 			},
 		},
