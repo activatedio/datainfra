@@ -512,7 +512,12 @@ func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEn
 		paramsName := "params"
 		txName := "tx"
 		thisTable := jh.TableName
-		assocatedTable := fmt.Sprintf("%s_%s", jh.TablePrefix, jha.TableName)
+		var assocatedTable string
+		if !a.Reversed {
+			assocatedTable = fmt.Sprintf("%s_%s", jh.TablePrefix, jha.TableName)
+		} else {
+			assocatedTable = fmt.Sprintf("%s_%s", jha.TablePrefix, jh.TableName)
+		}
 		thisAssocatedKey := fmt.Sprintf("%s_%s", jh.TablePrefix, jh.Keys[0].Name)
 		otherAssocatedKey := fmt.Sprintf("%s_%s", jha.TablePrefix, jha.Keys[0].Name)
 

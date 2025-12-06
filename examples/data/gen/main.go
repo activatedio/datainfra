@@ -23,6 +23,7 @@ func main() {
 				data.FilterKeys{},
 				data.ListByAssociatedKey{
 					AssociatedType: reflect.TypeFor[model.Product](),
+					Reversed:       true,
 				},
 			},
 		},
