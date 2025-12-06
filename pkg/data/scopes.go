@@ -17,6 +17,7 @@ const (
 	FetchTypeNone = "NONE"
 )
 
+// RootInfo represents a special type of context scope that represents no constraining scope.
 type RootInfo struct{}
 
 // NoneScopeTemplate defines a specialization of ScopeTemplate with RootInfo as the scope, representing no constraining scope.

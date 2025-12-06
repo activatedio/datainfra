@@ -18,20 +18,24 @@ import (
 	"go.uber.org/fx/fxtest"
 )
 
+// contextProvider is a struct implementing the ContextProvider interface using a data.ContextBuilder.
 type contextProvider struct {
 	contextBuilder data.ContextBuilder
 }
 
+// GetContext builds and returns a new context derived from a background context using the context builder.
 func (c *contextProvider) GetContext() context.Context {
 	return c.contextBuilder.Build(context.Background())
 }
 
+// NewContextProvider creates a datatesting.ContextProvider using the provided data.ContextBuilder to manage contexts.
 func NewContextProvider(contextBuilder data.ContextBuilder) datatesting.ContextProvider {
 	return &contextProvider{
 		contextBuilder: contextBuilder,
 	}
 }
 
+// appFixture is a struct that manages test application setup, state, and clean-up procedures for testing purposes.
 type appFixture struct {
 	mu       sync.Mutex
 	closer   func() error
@@ -40,6 +44,7 @@ type appFixture struct {
 	opt      fx.Option
 }
 
+// Cleanup releases resources associated with the appFixture by invoking the closer function, if it is not nil.
 func (a *appFixture) Cleanup() error {
 	if a.closer != nil {
 		return a.closer()
@@ -47,12 +52,14 @@ func (a *appFixture) Cleanup() error {
 	return nil
 }
 
+// InvokeParams provides dependencies for invocation, including setup and migration components via fx.In.
 type InvokeParams struct {
 	fx.In
 	Setup    setup.Setup
 	Migrator migrate.Migrator
 }
 
+// GetApp initializes a test application instance with provided dependencies and invokes setup, returning a result object.
 func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatesting.AppFixtureResult {
 
 	a.mu.Lock()
@@ -101,6 +108,7 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 	}
 }
 
+// NewAppFixture creates a new AppFixture for testing, initializing it with a name and an fx.Option configuration.
 func NewAppFixture(name string, opt fx.Option) datatesting.AppFixture {
 	return &appFixture{
 		name: fmt.Sprintf("gorm: %s", name),
@@ -108,6 +116,7 @@ func NewAppFixture(name string, opt fx.Option) datatesting.AppFixture {
 	}
 }
 
+// GormTestingConfigResult is a struct used to hold configuration results for testing GORM setups.
 type GormTestingConfigResult struct {
 	fx.Out
 	GormConfig         *gorm2.Config
@@ -116,6 +125,7 @@ type GormTestingConfigResult struct {
 	MigratorData       []gormmigrate.MigratorData
 }
 
+// NewStaticGormTestingConfig creates a static GORM testing configuration function using the provided configs and migrator data.
 func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.Config, migratorData []gormmigrate.MigratorData) func() GormTestingConfigResult {
 	return func() GormTestingConfigResult {
 		return GormTestingConfigResult{

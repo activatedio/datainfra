@@ -30,14 +30,14 @@ type JenHelper struct {
 func GetGormJenHelper(entry *data.Entry) JenHelper {
 	jh := entry.GetJenHelper()
 
-	var keys []Key
+	keys := make([]Key, len(jh.KeyFields))
 
-	for _, k := range jh.KeyFields {
+	for i, k := range jh.KeyFields {
 
-		keys = append(keys, Key{
+		keys[i] = Key{
 			Name: strcase.ToSnake(k.Name),
 			Type: jen.Qual(k.PkgPath, k.Type.String()),
-		})
+		}
 	}
 
 	return JenHelper{

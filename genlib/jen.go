@@ -55,7 +55,7 @@ type Key struct {
 func NewKey[E any]() Key {
 	return Key{
 		t: reflect.TypeFor[E](),
-		test: func(e any) bool {
+		test: func(_ any) bool {
 			return true
 		},
 	}

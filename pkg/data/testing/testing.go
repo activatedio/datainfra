@@ -6,12 +6,10 @@ import (
 	"testing"
 
 	"github.com/activatedio/datainfra/pkg/data"
-	"github.com/activatedio/datainfra/pkg/symbols"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/fx"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -31,34 +29,13 @@ func Run(t *testing.T, fixtures []AppFixture, toInvoke any, toProvide ...any) {
 
 		res := fix.GetApp(t, toInvoke, toProvide...)
 
-		t.Run(res.Name, func(t *testing.T) {
+		t.Run(res.Name, func(_ *testing.T) {
 			res.App.RequireStart()
 
 			res.App.RequireStop()
 		})
 
 	}
-}
-
-// Unit represents a generic container type with a value of type T and a collection of associated symbols.
-type Unit[T any] struct {
-	unit    T
-	symbols symbols.Symbols
-}
-
-// NewUnit creates and returns a pointer to a new instance of Unit with the type parameter T.
-func NewUnit[T any]() *Unit[T] {
-	return &Unit[T]{}
-}
-
-// UnitAndSymbols returns the unit value and its associated symbols for the current Unit instance.
-func (u *Unit[T]) UnitAndSymbols() (T, symbols.Symbols) {
-	return u.unit, u.symbols
-}
-
-// Options returns an fx.Option that registers the Unit instance as a module and populates its fields via dependency injection.
-func (u *Unit[T]) Options() fx.Option {
-	return fx.Module("unit", fx.Populate(&u.unit, &u.symbols))
 }
 
 // ListAssertion defines the expected conditions for validating lists of type E during tests.
@@ -92,7 +69,7 @@ type CrudTestFixture[E any, K comparable] struct {
 
 // DoTestCrudRepository performs a comprehensive CRUD test for a generic repository using provided test fixtures.
 func DoTestCrudRepository[E any, K comparable](t *testing.T,
-	ctx context.Context, unit data.CrudTemplate[E, K], fixture *CrudTestFixture[E, K]) {
+	ctx context.Context, unit data.CrudTemplate[E, K], fixture *CrudTestFixture[E, K]) { //nolint:revive // okay to have ctx second for a test
 
 	for _, sa := range fixture.SelectAssertions {
 

@@ -93,7 +93,7 @@ type fixedKeyCodeGenerator struct {
 }
 
 // Generate returns a pre-defined jen.Code object associated with the fixedKeyCodeGenerator instance.
-func (f *fixedKeyCodeGenerator) Generate(interfaceImport string) jen.Code {
+func (f *fixedKeyCodeGenerator) Generate(_ string) jen.Code {
 	return f.code
 }
 
@@ -106,9 +106,8 @@ type localKeyCodeGenerator struct {
 func (l *localKeyCodeGenerator) Generate(interfaceImport string) jen.Code {
 	if interfaceImport == "" {
 		return jen.Id(l.id)
-	} else {
-		return jen.Qual(interfaceImport, l.id)
 	}
+	return jen.Qual(interfaceImport, l.id)
 }
 
 // JenHelper is a structure designed to aid in generating Go code and managing metadata for data objects.

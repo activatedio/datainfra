@@ -101,9 +101,11 @@ func (s *Set[T]) All() []T {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureEntries()
-	var res []T
-	for k, _ := range s.entries {
-		res = append(res, k)
+	res := make([]T, len(s.entries))
+	i := 0
+	for k := range s.entries {
+		res[i] = k
+		i++
 	}
 	return res
 }

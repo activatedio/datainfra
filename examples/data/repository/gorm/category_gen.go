@@ -2,6 +2,7 @@ package gorm
 
 import (
 	"context"
+
 	model "github.com/activatedio/datainfra/examples/data/model"
 	repository "github.com/activatedio/datainfra/examples/data/repository"
 	data "github.com/activatedio/datainfra/pkg/data"
