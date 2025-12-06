@@ -11,25 +11,29 @@ import (
 	"gorm.io/gorm"
 )
 
+// gormSetup is a type that facilitates setting up and tearing down Gorm-based database configurations and connections.
 type gormSetup struct {
-	ownerConfig *datagorm.GormConfig
-	appConfig   *datagorm.GormConfig
+	ownerConfig *datagorm.Config
+	appConfig   *datagorm.Config
 	db          *gorm.DB
 }
 
+// SetupParams defines the parameters required to set up an application, including database configurations.
 type SetupParams struct {
 	fx.In
 	OwnerConfig *OwnerGormConfig
-	AppConfig   *datagorm.GormConfig
+	AppConfig   *datagorm.Config
 }
 
+// NewSetup creates and returns a new setup instance, initializing it with the provided SetupParams configuration.
 func NewSetup(params SetupParams) setup.Setup {
 	return &gormSetup{
-		ownerConfig: &params.OwnerConfig.GormConfig,
+		ownerConfig: &params.OwnerConfig.Config,
 		appConfig:   params.AppConfig,
 	}
 }
 
+// setupPostgres sets up a PostgreSQL database by initializing, checking existence, creating a user, database, and permissions.
 func (g *gormSetup) setupPostgres(params setup.Params) error {
 
 	if err := g.init(g.ownerConfig); err != nil {
@@ -66,7 +70,8 @@ func (g *gormSetup) setupPostgres(params setup.Params) error {
 	return nil
 }
 
-// Setup initializes the database setup process, including user creation, database creation, and granting required privileges.
+// Setup initializes the database based on the specified parameters and the configured dialect in ownerConfig.
+// Returns an error if the dialect is unsupported or if the setup process encounters an issue.
 func (g *gormSetup) Setup(params setup.Params) error {
 
 	switch g.ownerConfig.Dialect {
@@ -81,6 +86,7 @@ func (g *gormSetup) Setup(params setup.Params) error {
 
 }
 
+// teardownPostgres removes the PostgreSQL database and user setup by the application.
 func (g *gormSetup) teardownPostgres() error {
 	if err := g.init(g.ownerConfig); err != nil {
 		return err
@@ -97,7 +103,7 @@ func (g *gormSetup) teardownPostgres() error {
 	return nil
 }
 
-// Teardown performs cleanup by dropping the database and user associated with the current configuration. Returns an error if any step fails.
+// Teardown cleans up resources based on the configured database dialect. Returns an error if the dialect is unknown.
 func (g *gormSetup) Teardown() error {
 
 	switch g.ownerConfig.Dialect {
@@ -111,7 +117,8 @@ func (g *gormSetup) Teardown() error {
 	}
 }
 
-func (g *gormSetup) init(cfg *datagorm.GormConfig) error {
+// init initializes the database connection using the provided configuration and assigns it to the gormSetup instance.
+func (g *gormSetup) init(cfg *datagorm.Config) error {
 	db, err := datagorm.NewDB(cfg)
 
 	if err != nil {
@@ -121,11 +128,12 @@ func (g *gormSetup) init(cfg *datagorm.GormConfig) error {
 	return nil
 }
 
-// PgRole represents a PostgreSQL role with the rolname field indicating the name of the role.
+// PgRole represents a PostgreSQL role, typically used to define database users or groups of users.
 type PgRole struct {
 	Rolname string
 }
 
+// createUser checks if a database user exists, and creates it with a password if it does not exist.
 func (g *gormSetup) createUser() error {
 
 	log.Info().Msg("creating user if it doesn't exist")
@@ -151,6 +159,7 @@ func (g *gormSetup) createUser() error {
 
 }
 
+// dropUser removes a database user if it exists, logging the outcome and returning an error if any operation fails.
 func (g *gormSetup) dropUser() error {
 
 	log.Info().Str("user", g.appConfig.Username).Msg("creating user if it doesn't exist")
@@ -174,11 +183,13 @@ func (g *gormSetup) dropUser() error {
 
 }
 
-// PgDatabase represents a PostgreSQL database with its name.
+// PgDatabase represents a PostgreSQL database with a specific name.
+// The Datname field contains the name of the database.
 type PgDatabase struct {
 	Datname string
 }
 
+// databaseExists checks if the specified database exists in the PostgreSQL instance and returns its existence status.
 func (g *gormSetup) databaseExists() (bool, string, error) {
 
 	log.Info().Msg("checking to see if database exists")
@@ -197,6 +208,7 @@ func (g *gormSetup) databaseExists() (bool, string, error) {
 
 }
 
+// createDatabase creates a new database using the given name from the appConfig configuration.
 func (g *gormSetup) createDatabase() error {
 
 	log.Info().Msg("creating database")
@@ -206,6 +218,7 @@ func (g *gormSetup) createDatabase() error {
 	return tx.Error
 }
 
+// dropDatabase drops the specified database if it exists and terminates active connections to it. Returns an error if any operation fails.
 func (g *gormSetup) dropDatabase() error {
 
 	log.Info().Str("database", g.appConfig.Name).Msg("drop database if it exists")
@@ -234,6 +247,7 @@ func (g *gormSetup) dropDatabase() error {
 	return nil
 }
 
+// grantAllToDatabase grants all privileges on the specified database to the associated user defined in appConfig.
 func (g *gormSetup) grantAllToDatabase() error {
 
 	log.Info().Msg("granting all on database")
@@ -242,10 +256,11 @@ func (g *gormSetup) grantAllToDatabase() error {
 
 }
 
+// grantAllToSchema grants all necessary schema privileges to the specified user for the database schema.
 func (g *gormSetup) grantAllToSchema() error {
 
 	log.Info().Msg("granting schema permissions")
-	db, err := datagorm.NewDB(&datagorm.GormConfig{
+	db, err := datagorm.NewDB(&datagorm.Config{
 		Dialect:          g.ownerConfig.Dialect,
 		Host:             g.ownerConfig.Host,
 		Port:             g.ownerConfig.Port,

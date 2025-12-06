@@ -1,38 +1,53 @@
 package data
 
 import (
+	"fmt"
+	"reflect"
+
 	"github.com/activatedio/datainfra/genlib"
 	"github.com/dave/jennifer/jen"
 )
 
+// ImportThis defines the import path for the data infrastructure package used in the application.
 var (
 	ImportThis = "github.com/activatedio/datainfra/pkg/data"
 )
 
+// Types represents a collection of data types, consisting of a package name and a list of entries describing the types.
 type Types struct {
 	Package string
 	Entries []Entry
 }
 
+// GetPackage retrieves the package name associated with the Types instance.
 func (t *Types) GetPackage() string {
 	return t.Package
 }
 
-// Search adds search support
+// Crud represents a marker type used to define CRUD-related operations
+type Crud struct {
+	Operations *genlib.Set[Operation]
+}
+
+// Search represents a marker type used to define search-related operations in data handling systems.
 type Search struct {
 }
 
+// Associate defines a type used for managing and linking associated entities or data in a structured system.
 type Associate struct {
+	ChildType reflect.Type
 }
 
+type FilterKeys struct {
+}
+
+// InterfaceMethods represents metadata for generating interface methods for a specific entry type.
 type InterfaceMethods struct {
 	Entry *Entry
 }
 
-func NewDataRegistry() genlib.Registry {
-
-	return genlib.NewRegistry().WithHandlerEntries(genlib.
-		NewHandlerEntries().AddFileHandler(genlib.NewKey[*Types](), func(f *jen.File, r genlib.Registry, entry any) {
+func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+	return he.AddFileHandler(genlib.NewKey[*Types](), func(f *jen.File, r genlib.Registry, entry any) {
 
 		t := entry.(*Types)
 		ds := t.Entries
@@ -53,32 +68,41 @@ func NewDataRegistry() genlib.Registry {
 			)
 		}
 
-	}).AddStatementHandler(genlib.NewKey[*InterfaceMethods](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	})
+}
+
+func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+
+	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+		return HasImplementation[Crud](in.Entry)
+	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
 
 		i := entry.(*InterfaceMethods)
 		d := i.Entry
 
 		jh := d.GetJenHelper()
 
-		for _, op := range d.Operations.All() {
+		c := GetImplementation[Crud](d)
+
+		for _, op := range c.Operations.All() {
 			switch op {
 			case OperationFindByKey:
 				s.Add(jen.Id("FindByKey").Params(
-					qualCtx,
+					QualCtx,
 					jh.GenerateKeyCode(""),
 				).Params(
 					jen.Op("*").Add(jh.StructType),
-					idError,
+					IdError,
 				)).Add(jen.Id("ExistsByKey").Params(
-					qualCtx,
+					QualCtx,
 					jh.GenerateKeyCode(""),
 				).Params(
 					jen.Bool(),
-					idError,
+					IdError,
 				))
 			case OperationList:
 				s.Add(jen.Id("ListAll").Params(
-					qualCtx, jen.Qual(ImportThis, "ListParams")).Params(
+					QualCtx, jen.Qual(ImportThis, "ListParams")).Params(
 					jen.Op("*").Qual(ImportThis, "List").Types(
 						jen.Op("*").Add(jh.StructType),
 					),
@@ -86,37 +110,110 @@ func NewDataRegistry() genlib.Registry {
 				))
 			case OperationCreate:
 				s.Add(jen.Id("Create").Params(
-					qualCtx, jen.Op("*").Add(jh.StructType)).Params(
+					QualCtx, jen.Op("*").Add(jh.StructType)).Params(
 					jen.Error(),
 				))
 			case OperationUpdate:
 				s.Add(jen.Id("Update").Params(
-					qualCtx, jen.Op("*").Add(jh.StructType)).Params(
+					QualCtx, jen.Op("*").Add(jh.StructType)).Params(
 					jen.Error(),
 				))
 			case OperationDelete:
 				s.Add(jen.Id("Delete").Params(
-					qualCtx, jh.GenerateKeyCode("")).Params(
+					QualCtx, jh.GenerateKeyCode("")).Params(
 					jen.Error(),
 				))
 				s.Add(jen.Id("DeleteEntity").Params(
-					qualCtx, jen.Op("*").Add(jh.StructType)).Params(
+					QualCtx, jen.Op("*").Add(jh.StructType)).Params(
 					jen.Error(),
 				))
 			}
 		}
 
 		return s
-	}).AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
-		_, ok := GetImplementation[Search](in.Entry)
-		return ok
+	})
+
+}
+
+func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+
+	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+		return HasImplementation[Search](in.Entry)
 	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
-		return s.Add(jen.Commentf("Need to add search methods here"))
-	}).AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
-		_, ok := GetImplementation[Associate](in.Entry)
-		return ok
+
+		i := entry.(*InterfaceMethods)
+
+		jh := i.Entry.GetJenHelper()
+
+		return s.Add(
+			jen.Id("Search").Params(
+				jen.Id("ctx").Add(QualCtx),
+				jen.Id("criteria").Op("[]*").Qual(ImportThis, "SearchPredicate"),
+				jen.Id("params").Op("*").Qual(ImportThis, "PageParams"),
+			).Params(jen.Op("*").Qual(ImportThis, "List").Types(jen.Op("*").Qual(ImportThis, "SearchResult").Types(jen.Op("*").Add(jh.StructType))), jen.Error())).Add(
+			jen.Id("GetSearchPredicates").Params(QualCtx).Params(jen.Op("[]*").Qual(ImportThis, "SearchPredicateDescriptor"), jen.Error()))
+
+	})
+
+}
+
+func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+
+	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+		return HasImplementation[Associate](in.Entry)
 	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
-		return s.Add(jen.Commentf("Need to add associate"))
-	}))
+
+		i := entry.(*InterfaceMethods)
+
+		a := GetImplementation[Associate](i.Entry)
+
+		jh := i.Entry.GetJenHelper()
+
+		_e := &Entry{
+			Type: a.ChildType,
+		}
+
+		jhc := _e.GetJenHelper()
+
+		ckc := jhc.GenerateKeyCode("")
+
+		return s.Add(jen.Id(fmt.Sprintf("Associate%s", Pl.Plural(jhc.StructName))).Params(jen.Id("ctx").Add(QualCtx), jen.Id("key").Add(jh.GenerateKeyCode("")), jen.Id("add").Index().Add(ckc), jen.Id("remove").Index().Add(ckc)).Params(jen.Error()))
+
+	})
+
+}
+
+func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+
+	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+		return HasImplementation[FilterKeys](in.Entry)
+	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+
+		i := entry.(*InterfaceMethods)
+
+		jh := i.Entry.GetJenHelper()
+
+		kc := jh.GenerateKeyCode("")
+
+		return s.Add(
+			jen.Id("FilterKeys").Params(
+				jen.Id("ctx").Add(QualCtx),
+				jen.Id("keys").Index().Add(kc),
+			).Params(jen.Index().Add(kc), jen.Error()))
+
+	})
+
+}
+
+// NewDataRegistry initializes a new data registry with custom handler entries for files, statements, and interface methods.
+func NewDataRegistry() genlib.Registry {
+
+	he := genlib.NewHandlerEntries()
+	he = addBaseHandlers(he)
+	he = addCrudHandlers(he)
+	he = addSearchHandlers(he)
+	he = addFilterKeysHandlers(he)
+
+	return genlib.NewRegistry().WithHandlerEntries(he)
 
 }

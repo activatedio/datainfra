@@ -1,3 +1,4 @@
+// Package gorm contains gorm related test data
 package gorm
 
 import "embed"

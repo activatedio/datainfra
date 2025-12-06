@@ -1,8 +1,13 @@
 package data
 
-import "github.com/dave/jennifer/jen"
+import (
+	"github.com/dave/jennifer/jen"
+	"github.com/gertd/go-pluralize"
+)
 
 var (
-	qualCtx = jen.Qual("context", "Context")
-	idError = jen.Id("error")
+	QualCtx = jen.Qual("context", "Context")
+	IdError = jen.Id("error")
+
+	Pl = pluralize.NewClient()
 )
