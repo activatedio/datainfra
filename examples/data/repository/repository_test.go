@@ -23,7 +23,7 @@ var (
 func TestMain(m *testing.M) {
 
 	dbTemp, err := os.CreateTemp("", "unit")
-	name := fmt.Sprintf("unit_%d", time.Now().UnixNano())
+	name := fmt.Sprintf("unit_%d_%d", time.Now().UnixNano(), os.Getpid())
 
 	if err != nil {
 		panic(err)

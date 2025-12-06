@@ -5,9 +5,11 @@ import (
 
 	"github.com/activatedio/datainfra/examples/data/model"
 	"github.com/activatedio/datainfra/examples/data/repository"
+	"github.com/activatedio/datainfra/pkg/data"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCategoryRepository_Crud(t *testing.T) {
@@ -15,7 +17,7 @@ func TestCategoryRepository_Crud(t *testing.T) {
 	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider, unit repository.CategoryRepository) {
 		datatesting.DoTestCrudRepository[*model.Category, string](t, cp.GetContext(), unit,
 			&datatesting.CrudTestFixture[*model.Category, string]{
-				KeyExists:  "key",
+				KeyExists:  "a",
 				KeyMissing: "invalid",
 				NewEntity: func() *model.Category {
 					return &model.Category{}
@@ -41,5 +43,19 @@ func TestCategoryRepository_Crud(t *testing.T) {
 					a.Equal("modified", e.Description)
 				},
 			})
+	})
+}
+
+func TestCategoryRepository_ListByProduct(t *testing.T) {
+	a := assert.New(t)
+	r := require.New(t)
+	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider, unit repository.CategoryRepository) {
+
+		ctx := cp.GetContext()
+
+		got, err := unit.ListByProduct(ctx, "1", data.ListParams{})
+		r.NoError(err)
+		a.Len(got.List, 1)
+
 	})
 }

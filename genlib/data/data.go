@@ -45,6 +45,7 @@ type FilterKeys struct {
 // ListByAssociatedKey specifies a type associated with another entity for relation-based operations or queries.
 type ListByAssociatedKey struct {
 	AssociatedType reflect.Type
+	Reversed       bool
 }
 
 // InterfaceMethods represents a type used for generating method definitions based on the associated `Entry` metadata.

@@ -37,11 +37,10 @@ func NewContextProvider(contextBuilder data.ContextBuilder) datatesting.ContextP
 
 // appFixture is a struct that manages test application setup, state, and clean-up procedures for testing purposes.
 type appFixture struct {
-	mu       sync.Mutex
-	closer   func() error
-	migrated bool
-	name     string
-	opt      fx.Option
+	once   sync.Once
+	closer func() error
+	name   string
+	opt    fx.Option
 }
 
 // Cleanup releases resources associated with the appFixture by invoking the closer function, if it is not nil.
@@ -62,22 +61,18 @@ type InvokeParams struct {
 // GetApp initializes a test application instance with provided dependencies and invokes setup, returning a result object.
 func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatesting.AppFixtureResult {
 
-	a.mu.Lock()
-
 	var invoke []any
 
-	if a.migrated {
-		a.mu.Unlock()
-	} else {
+	invoke = append(invoke, func(ip InvokeParams) error {
 
-		invoke = append(invoke, func(ip InvokeParams) error {
+		var _err error
 
-			defer a.mu.Unlock()
-
+		a.once.Do(func() {
 			if ip.Setup != nil {
 				log.Info().Msg("running setup")
 				if err := ip.Setup.Setup(setup.Params{FailOnExisting: true}); err != nil {
-					return err
+					_err = err
+					return
 				}
 				a.closer = func() error {
 					return ip.Setup.Teardown()
@@ -86,14 +81,14 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 
 			if ip.Migrator != nil {
 				if err := ip.Migrator.Migrate(); err != nil {
-					return err
+					_err = err
+					return
 				}
 			}
-
-			return nil
-
 		})
-	}
+
+		return _err
+	})
 
 	invoke = append(invoke, toInvoke)
 
