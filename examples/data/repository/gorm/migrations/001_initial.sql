@@ -9,6 +9,13 @@ CREATE TABLE categories (
 CREATE TABLE products (
     sku VARCHAR(64),
     description VARCHAR(200),
+    {{ if eq "postgres" .Dialect }}
+    full_text TSVECTOR GENERATED ALWAYS AS (TO_TSVECTOR
+      ('english',
+        (CASE WHEN description IS NULL THEN '' ELSE description END)
+      )
+    ) STORED,
+    {{ end }}
     PRIMARY KEY (sku)
 );
 

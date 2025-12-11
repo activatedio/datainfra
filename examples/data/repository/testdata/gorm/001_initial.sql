@@ -6,8 +6,8 @@ INSERT INTO categories (name, description) VALUES
 ;
 
 INSERT INTO products (sku, description) VALUES
-  ('1', 'Product 1'),
-  ('2', 'Product 2'),
+  ('1', 'Test Product 1'),
+  ('2', 'Test Product 2'),
   ('3', 'Product 3'),
   ('4', 'Product 4')
 ;

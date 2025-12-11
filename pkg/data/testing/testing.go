@@ -67,8 +67,8 @@ type CrudTestFixture[E any, K comparable] struct {
 	AssertAfterUpdate  func(t *testing.T, e E)
 }
 
-// DoTestCrudRepository performs a comprehensive CRUD test for a generic repository using provided test fixtures.
-func DoTestCrudRepository[E any, K comparable](t *testing.T,
+// DoTestCrud performs a comprehensive CRUD test for a generic repository using provided test fixtures.
+func DoTestCrud[E any, K comparable](t *testing.T,
 	ctx context.Context, unit data.CrudTemplate[E, K], fixture *CrudTestFixture[E, K]) { //nolint:revive // okay to have ctx second for a test
 
 	for _, sa := range fixture.SelectAssertions {
@@ -189,12 +189,63 @@ func HasLabels(got any) bool {
 
 // FilterKeysTestFixture is a testing fixture for validating FilterKeysTemplate implementations with generic key support.
 type FilterKeysTestFixture[K comparable] struct {
-	// UnitFactory provides a method to create instances of the tested FilterKeysTemplate implementation.
-	UnitFactory func() data.FilterKeysTemplate[K]
 	// ArrangeContext allows preparation or alteration of the execution context for tests.
 	ArrangeContext func(context.Context) context.Context
 	// KeyExists is a key expected to be recognized as existing within the context of FilterKeys.
 	KeyExists K
 	// KeyMissing is a key expected to be unrecognized or missing within the context of FilterKeys.
 	KeyMissing K
+}
+
+// DoTestFilterKeys performs a comprehensive test for a FilterKeysTemplate implementation using the provided fixture.
+func DoTestFilterKeys[K comparable, T data.FilterKeysTemplate[K]](t *testing.T,
+	ctx context.Context, unit data.FilterKeysTemplate[K], fixture *FilterKeysTestFixture[K]) { //nolint:revive // okay to have ctx second for a test
+
+	if f := fixture.ArrangeContext; f != nil {
+		ctx = fixture.ArrangeContext(ctx)
+	}
+
+	got, err := unit.FilterKeys(ctx, []K{fixture.KeyExists, fixture.KeyMissing})
+
+	require.NoError(t, err)
+	assert.Equal(t, []K{fixture.KeyExists}, got)
+}
+
+// SearchTestFixtureEntry represents a single test case for a SearchTemplate implementation.
+type SearchTestFixtureEntry[E any] struct {
+	Arrange func(ctx context.Context) (context.Context, []*data.SearchPredicate)
+	Assert  func(got *data.List[*data.SearchResult[E]], err error)
+}
+
+// SearchTestFixture represents a generic testing fixture for validating SearchTemplate implementations.
+type SearchTestFixture[E any, T data.SearchTemplate[E]] struct {
+	ArrangeContext func(context.Context) context.Context
+	Init           func() func(ctx context.Context, unit T) error
+	Teardown       func() func(ctx context.Context, unit T) error
+	FixtureEntries func() map[string]*SearchTestFixtureEntry[E]
+}
+
+// DoTestSearch performs a comprehensive test for a SearchTemplate implementation using the provided fixture.
+func DoTestSearch[E any, T data.SearchTemplate[E]](t *testing.T, ctx context.Context, unit T, fixture *SearchTestFixture[E, T]) { //nolint:revive // okay to have ctx second for a test
+	if f := fixture.Init; f != nil {
+		require.NoError(t, f()(ctx, unit))
+	}
+
+	if f := fixture.ArrangeContext; f != nil {
+		ctx = fixture.ArrangeContext(ctx)
+	}
+
+	for k2, v2 := range fixture.FixtureEntries() {
+		t.Run(k2, func(_ *testing.T) {
+
+			_ctx, preds := v2.Arrange(ctx)
+
+			got, err := unit.Search(_ctx, preds, nil)
+			v2.Assert(got, err)
+		})
+	}
+
+	if f := fixture.Teardown; f != nil {
+		require.NoError(t, f()(ctx, unit))
+	}
 }
