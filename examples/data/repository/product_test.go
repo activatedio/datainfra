@@ -1,6 +1,8 @@
 package repository_test
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
 	"github.com/activatedio/datainfra/examples/data/model"
@@ -12,10 +14,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestProductRepository_Search(t *testing.T) {
+	a := assert.New(t)
+	r := require.New(t)
+	datatesting.Run(t, AppFixtures, func(md *ProfileMetadata, cp datatesting.ContextProvider, unit repository.ProductRepository) {
+		datatesting.DoTestSearch[*model.Product, repository.ProductRepository](t, cp.GetContext(), unit,
+			&datatesting.SearchTestFixture[*model.Product, repository.ProductRepository]{
+				FixtureEntries: func() map[string]*datatesting.SearchTestFixtureEntry[*model.Product] {
+					switch md.Name {
+					case "sqlite":
+						return map[string]*datatesting.SearchTestFixtureEntry[*model.Product]{}
+					case "postgres":
+						return map[string]*datatesting.SearchTestFixtureEntry[*model.Product]{
+							"keywords": {
+								Arrange: func(ctx context.Context) (context.Context, []*data.SearchPredicate) {
+									return ctx, []*data.SearchPredicate{
+										{
+											Name:        "keywords",
+											Operator:    data.SearchOperatorStringMatch,
+											StringValue: "Test",
+										},
+									}
+								},
+								Assert: func(got *data.List[*data.SearchResult[*model.Product]], err error) {
+									r.NoError(err)
+									a.Len(got.List, 2)
+								},
+							},
+						}
+					default:
+						panic(fmt.Errorf("unexpected product name: %s", md.Name))
+					}
+				},
+			})
+	})
+}
+
 func TestProductRepository_Crud(t *testing.T) {
 	a := assert.New(t)
 	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider, unit repository.ProductRepository) {
-		datatesting.DoTestCrudRepository[*model.Product, string](t, cp.GetContext(), unit,
+		datatesting.DoTestCrud[*model.Product, string](t, cp.GetContext(), unit,
 			&datatesting.CrudTestFixture[*model.Product, string]{
 				KeyExists:  "1",
 				KeyMissing: "invalid",
@@ -46,7 +84,7 @@ func TestProductRepository_Crud(t *testing.T) {
 	})
 }
 
-func TestProductRepository_ListByProduct(t *testing.T) {
+func TestProductRepository_ListByCategory(t *testing.T) {
 	a := assert.New(t)
 	r := require.New(t)
 	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider, unit repository.ProductRepository) {

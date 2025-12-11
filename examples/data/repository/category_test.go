@@ -15,7 +15,7 @@ import (
 func TestCategoryRepository_Crud(t *testing.T) {
 	a := assert.New(t)
 	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider, unit repository.CategoryRepository) {
-		datatesting.DoTestCrudRepository[*model.Category, string](t, cp.GetContext(), unit,
+		datatesting.DoTestCrud[*model.Category, string](t, cp.GetContext(), unit,
 			&datatesting.CrudTestFixture[*model.Category, string]{
 				KeyExists:  "a",
 				KeyMissing: "invalid",
@@ -42,6 +42,16 @@ func TestCategoryRepository_Crud(t *testing.T) {
 				AssertAfterUpdate: func(_ *testing.T, e *model.Category) {
 					a.Equal("modified", e.Description)
 				},
+			})
+	})
+}
+
+func TestCategoryRepository_FilterKeys(t *testing.T) {
+	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider, unit repository.CategoryRepository) {
+		datatesting.DoTestFilterKeys[string, repository.CategoryRepository](t, cp.GetContext(), unit,
+			&datatesting.FilterKeysTestFixture[string]{
+				KeyExists:  "a",
+				KeyMissing: "invlaid",
 			})
 	})
 }
