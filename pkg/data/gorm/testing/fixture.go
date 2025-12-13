@@ -1,12 +1,10 @@
 package testing
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"testing"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	gorm2 "github.com/activatedio/datainfra/pkg/data/gorm"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
 	"github.com/activatedio/datainfra/pkg/migrate"
@@ -17,23 +15,6 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
 )
-
-// contextProvider is a struct implementing the ContextProvider interface using a data.ContextBuilder.
-type contextProvider struct {
-	contextBuilder data.ContextBuilder
-}
-
-// GetContext builds and returns a new context derived from a background context using the context builder.
-func (c *contextProvider) GetContext() context.Context {
-	return c.contextBuilder.Build(context.Background())
-}
-
-// NewContextProvider creates a datatesting.ContextProvider using the provided data.ContextBuilder to manage contexts.
-func NewContextProvider(contextBuilder data.ContextBuilder) datatesting.ContextProvider {
-	return &contextProvider{
-		contextBuilder: contextBuilder,
-	}
-}
 
 // appFixture is a struct that manages test application setup, state, and clean-up procedures for testing purposes.
 type appFixture struct {
@@ -91,7 +72,7 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 	}, toInvoke)
 
 	app := fxtest.New(t, a.opt,
-		fx.Provide(NewContextProvider, gormsetup.NewSetup, gormmigrate.NewMigrator),
+		fx.Provide(datatesting.NewContextProvider, gormsetup.NewSetup, gormmigrate.NewMigrator),
 		fx.Provide(provide...),
 		fx.Invoke(invoke...))
 
