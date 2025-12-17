@@ -12,7 +12,7 @@ type Product struct {
 	Description string
 }
 
-// WithStringID returns the SKU value of the Product instance.
-func (p *Product) WithStringID() string {
+// GetStringID returns the SKU value of the Product instance.
+func (p *Product) GetStringID() string {
 	return p.SKU
 }
