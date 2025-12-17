@@ -322,6 +322,16 @@ func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		d := _if.Entry
 		jh := d.GetJenHelper()
 
+		srch := data.GetImplementation[data.Search](d)
+
+		var predicates *jen.Statement
+
+		if len(srch.Predicates) == 0 {
+			predicates = jen.Nil()
+		} else {
+			predicates = srch.Predicates.Generate()
+		}
+
 		internalName := jh.StructName + "Internal"
 		return s.Add(jen.Id("SearchTemplate").Op(":").Qual(ImportThis, "NewMappingSearchTemplate").Types(
 			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
@@ -329,6 +339,7 @@ func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
 		).Block(
 			jen.Id("Template").Op(":").Id("template").Op(","),
+			jen.Id("SearchPredicates").Op(":").Add(predicates).Op(","),
 		)).Op(","))
 
 	})

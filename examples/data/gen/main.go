@@ -7,6 +7,7 @@ import (
 	"github.com/activatedio/datainfra/examples/data/model"
 	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/activatedio/datainfra/genlib/data/gorm"
+	data2 "github.com/activatedio/datainfra/pkg/data"
 )
 
 //go:generate go run .
@@ -33,7 +34,20 @@ func main() {
 				data.Crud{
 					Operations: data.OperationsCrud,
 				},
-				data.Search{},
+				data.Search{
+					Predicates: []data.SearchPredicateEntry{
+						{
+							Name:      "@keywords",
+							Label:     "Keywords",
+							Operators: []data2.SearchOperator{data2.SearchOperatorStringMatch},
+						},
+						{
+							Name:      "@query",
+							Label:     "Query",
+							Operators: []data2.SearchOperator{data2.SearchOperatorStringMatch},
+						},
+					},
+				},
 				data.Associate{
 					ChildType: reflect.TypeFor[model.Category](),
 				},

@@ -51,6 +51,22 @@ func NewProductRepository(params ProductRepositoryParams) repository.ProductRepo
 		}),
 		SearchTemplate: gorm.NewMappingSearchTemplate[*model.Product, *ProductInternal](gorm.MappingSearchTemplateParams[*model.Product, *ProductInternal]{
 			Template: template,
+			SearchPredicates: []*data.SearchPredicateDescriptor{
+				{
+					Name:  "@keywords",
+					Label: "Keywords",
+					Operators: []data.SearchOperator{
+						data.SearchOperatorStringMatch,
+					},
+				},
+				{
+					Name:  "@query",
+					Label: "Query",
+					Operators: []data.SearchOperator{
+						data.SearchOperatorStringMatch,
+					},
+				},
+			},
 		}),
 		categoryRepository: params.CategoryRepository,
 	}

@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/activatedio/datainfra/genlib"
+	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/dave/jennifer/jen"
 )
 
@@ -31,6 +32,56 @@ type Crud struct {
 
 // Search defines a type used for implementing search-related logic and behavior in the system.
 type Search struct {
+	Predicates SearchPredicates
+}
+
+// SearchPredicates represents a slice of SearchPredicateDescriptor instances.
+type SearchPredicates []SearchPredicateEntry
+
+// SearchPredicateEntry represents a single entry in the SearchPredicates slice.
+type SearchPredicateEntry struct {
+	Name      string
+	Label     string
+	Operators []data.SearchOperator
+}
+
+// Generate returns a jen.Statement representing a slice of SearchPredicateDescriptor instances.
+// operatorToJenCode converts a SearchOperator constant to its jen.Code representation.
+func operatorToJenCode(op data.SearchOperator) *jen.Statement {
+	operatorMap := map[data.SearchOperator]string{
+		data.SearchOperatorNumberEquals:    "SearchOperatorNumberEquals",
+		data.SearchOperatorStringEquals:    "SearchOperatorStringEquals",
+		data.SearchOperatorStringNotEquals: "SearchOperatorStringNotEquals",
+		data.SearchOperatorStringMatch:     "SearchOperatorStringMatch",
+		data.SearchOperatorStringIn:        "SearchOperatorStringIn",
+		data.SearchOperatorStringNotIn:     "SearchOperatorStringNotIn",
+		data.SearchOperatorNumberNotEquals: "SearchOperatorNumberNotEquals",
+		data.SearchOperatorNumberIn:        "SearchOperatorNumberIn",
+	}
+
+	if name, exists := operatorMap[op]; exists {
+		return jen.Qual(ImportThis, name).Op(",")
+	}
+	return nil
+}
+
+// Generate returns a jen.Statement representing a slice of SearchPredicateDescriptor instances.
+func (s SearchPredicates) Generate() *jen.Statement {
+	entries := &jen.Statement{}
+	for _, e := range s {
+		var ops []jen.Code
+		for _, op := range e.Operators {
+			if code := operatorToJenCode(op); code != nil {
+				ops = append(ops, code)
+			}
+		}
+		entries.Add(jen.Block(
+			jen.Id("Name").Op(":").Lit(e.Name).Op(","),
+			jen.Id("Label").Op(":").Lit(e.Label).Op(","),
+			jen.Id("Operators").Op(":").Index().Qual(ImportThis, "SearchOperator").Block(ops...).Op(","),
+		).Op(","))
+	}
+	return jen.Index().Op("*").Qual(ImportThis, "SearchPredicateDescriptor").Block(*entries...)
 }
 
 // Associate represents a type that holds a child type as a reflection of its associated entity.
