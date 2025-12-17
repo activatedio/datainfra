@@ -11,3 +11,8 @@ type Product struct {
 	SKU         string `data:"key" gorm:"primaryKey"`
 	Description string
 }
+
+// WithStringID returns the SKU value of the Product instance.
+func (p *Product) WithStringID() string {
+	return p.SKU
+}
