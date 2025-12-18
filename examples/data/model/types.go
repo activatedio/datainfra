@@ -6,6 +6,11 @@ type Category struct {
 	Description string
 }
 
+// GetKey returns the name of the Category instance.
+func (c *Category) GetKey() string {
+	return c.Name
+}
+
 // Product represents an item with a Stock Keeping Unit (SKU) and a description.
 type Product struct {
 	SKU         string `data:"key" gorm:"primaryKey"`
