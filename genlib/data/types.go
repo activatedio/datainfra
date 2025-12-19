@@ -16,6 +16,19 @@ type Entry struct {
 	Implementations []any
 }
 
+func buildKeys(target *[]reflect.StructField, t reflect.Type) {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		dt := ParseTag(f.Tag.Get("data"))
+		if dt.IsKey {
+			*target = append(*target, f)
+		}
+		if f.Anonymous && f.Type.Kind() == reflect.Struct {
+			buildKeys(target, f.Type)
+		}
+	}
+}
+
 // GetJenHelper generates a JenHelper object for the Entry, which includes interface and struct metadata and key field analysis.
 func (e Entry) GetJenHelper() JenHelper {
 
@@ -26,13 +39,7 @@ func (e Entry) GetJenHelper() JenHelper {
 
 	res.StructType = jen.Qual(e.Type.PkgPath(), e.Type.Name())
 
-	for i := 0; i < e.Type.NumField(); i++ {
-		f := e.Type.Field(i)
-		dt := ParseTag(f.Tag.Get("data"))
-		if dt.IsKey {
-			res.KeyFields = append(res.KeyFields, f)
-		}
-	}
+	buildKeys(&res.KeyFields, e.Type)
 
 	switch {
 	case len(res.KeyFields) == 1:
