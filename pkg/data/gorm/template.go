@@ -42,16 +42,16 @@ type templateImpl[E any, I any] struct {
 
 // TemplateParams defines parameters required for creating templates with optional context scope and table name.
 type TemplateParams[E any, I any] struct {
-	CustomContextScope ContextScopeFactory
-	Table              string
+	ContextScope ContextScopeFactory
+	Table        string
 }
 
 // NewTemplate initializes and returns a Template instance for mapping entities with the specified parameters.
 func NewTemplate[E any](params TemplateParams[E, E]) Template[E] {
 
 	return NewMappingTemplate[E, E](MappingTemplateParams[E, E]{
-		CustomContextScope: params.CustomContextScope,
-		Table:              params.Table,
+		ContextScope: params.ContextScope,
+		Table:        params.Table,
 		ToInternal: func(in E) E {
 			return in
 		},
@@ -64,57 +64,22 @@ func NewTemplate[E any](params TemplateParams[E, E]) Template[E] {
 
 // MappingTemplateParams defines parameters for configuring a mapping template, including context, table, and conversion functions.
 type MappingTemplateParams[E any, I any] struct {
-	CustomContextScope ContextScopeFactory
-	Table              string
-	ToInternal         func(in E) I
-	FromInternal       func(in I) E
+	ContextScope ContextScopeFactory
+	Table        string
+	ToInternal   func(in E) I
+	FromInternal func(in I) E
 }
 
 // NewMappingTemplate initializes and returns a new MappingTemplate using the provided MappingTemplateParams.
 func NewMappingTemplate[E any, I any](params MappingTemplateParams[E, I]) MappingTemplate[E, I] {
 
-	var contextScope ContextScopeFactory
-
-	/*
-
-		TODO - need to figure out the context scope factory
-
-		if params.CustomContextScope != nil {
-			contextScope = params.CustomContextScope
-		} else {
-			contextScope = standardContextScope[E]()
-		}
-
-	*/
-
 	return &templateImpl[E, I]{
-		contextScope: contextScope,
+		contextScope: params.ContextScope,
 		table:        params.Table,
 		toInternal:   params.ToInternal,
 		fromInternal: params.FromInternal,
 	}
 }
-
-/*
-TODO - need to handle this context scope
-func standardContextScope[E any]() ContextScopeFactory {
-
-	switch model.ScopedFor[E]() {
-	case model.TenantScoped:
-		return WithContextTenantScope
-	case model.IssuerScoped:
-		return WithContextIssuerScope
-	case model.RealmScoped:
-		return WithContextRealmScope
-	case model.RealmViaProviderScoped:
-		return WithContextRealmViaProviderScope
-	case model.AudienceScoped:
-		return WithContextAudienceScope
-	default:
-		return nil
-	}
-}
-*/
 
 // ToInternal converts an instance of type E to its internal representation of type I using the toInternal function.
 func (c *templateImpl[E, I]) ToInternal(in E) I {

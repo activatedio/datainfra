@@ -21,9 +21,10 @@ type Key struct {
 // JenHelper represents a helper structure for managing data objects with metadata, table names, and keys.
 type JenHelper struct {
 	data.JenHelper
-	TablePrefix string
-	TableName   string
-	Keys        []Key
+	TablePrefix      string
+	TableName        string
+	Keys             []Key
+	ContextScopeCode jen.Code
 }
 
 // GetGormJenHelper transforms a data.Entry into a JenHelper enriched with keys and a pluralized table name.
@@ -40,10 +41,22 @@ func GetGormJenHelper(entry *data.Entry) JenHelper {
 		}
 	}
 
+	tableName := pl.Plural(strcase.ToSnake(jh.StructName))
+	var csc jen.Code
+
+	i := data.GetImplementation[Implementation](entry)
+	if i != nil {
+		if i.TableName != "" {
+			tableName = i.TableName
+		}
+		csc = i.ContextScopeCode
+	}
+
 	return JenHelper{
-		JenHelper:   jh,
-		Keys:        keys,
-		TablePrefix: strcase.ToSnake(jh.StructName),
-		TableName:   pl.Plural(strcase.ToSnake(jh.StructName)),
+		JenHelper:        jh,
+		Keys:             keys,
+		TablePrefix:      strcase.ToSnake(jh.StructName),
+		TableName:        tableName,
+		ContextScopeCode: csc,
 	}
 }

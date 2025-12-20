@@ -51,10 +51,14 @@ type InternalSuperFields struct {
 }
 
 // InternalFields is an empty struct used as a marker or placeholder within the codebase.
-type InternalFields struct{}
+type InternalFields struct {
+	Entry *data.Entry
+}
 
 // InternalFunctions represents a set of functions used internally for processing specific tasks or transformations.
-type InternalFunctions struct{}
+type InternalFunctions struct {
+	Entry *data.Entry
+}
 
 // ImplFields represents the key fields required for generating implementations tied to a data entry.
 type ImplFields struct {
@@ -81,9 +85,6 @@ type Ctor struct {
 
 // TemplateFields defines a structured type used for mapping data between internal and external representations.
 type TemplateFields struct{}
-
-// TemplateParamsField represents a struct used to manage or hold parameters for a specific template operation.
-type TemplateParamsField struct{}
 
 // CrudTemplateParamsField is a type used to define parameters for CRUD template configurations within a registry or handler.
 type CrudTemplateParamsField struct{}
@@ -147,10 +148,14 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		fs := *r.BuildStatement(&jen.Statement{}, &InternalSuperFields{
 			Entry: d,
 		})
-		fs = append(fs, *r.BuildStatement(&jen.Statement{}, &InternalFields{})...)
+		fs = append(fs, *r.BuildStatement(&jen.Statement{}, &InternalFields{
+			Entry: d,
+		})...)
 		f.Commentf("%s is the internal representation of %s", internalName, jh.StructName)
 		f.Type().Id(internalName).Struct(fs...)
-		r.RunFileHandler(f, &InternalFunctions{})
+		r.RunFileHandler(f, &InternalFunctions{
+			Entry: d,
+		})
 
 		implFields := &jen.Statement{}
 		implFields.Add(jen.Id("Template").Qual(ImportThis, "MappingTemplate").Types(
@@ -204,7 +209,7 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		jh := d.GetJenHelper()
 		return s.Add(jen.Op("*").Add(jh.StructType))
 
-	}).AddStatementHandler(genlib.NewKey[*Ctor](), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(genlib.NewKey[*Ctor](), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		fm := entry.(*Ctor)
 		d := fm.Entry
@@ -212,7 +217,9 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 		internalName := jh.StructName + "Internal"
 		tmplStmt := &jen.Statement{}
-		r.BuildStatement(tmplStmt, &TemplateFields{})
+		if jh.ContextScopeCode != nil {
+			tmplStmt.Add(jen.Id("ContextScope").Op(":").Add(jh.ContextScopeCode).Op(","))
+		}
 		tmplStmt.Add(jen.Id("Table").Op(":").Lit(jh.TableName).Op(","))
 		tmplStmt.Add(jen.Id("ToInternal").Op(":").Func().Params(
 			jen.Id("m").Op("*").Add(jh.StructType),
