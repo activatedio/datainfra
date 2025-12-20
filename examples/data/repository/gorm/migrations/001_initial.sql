@@ -27,3 +27,11 @@ CREATE TABLE product_categories (
     FOREIGN KEY (product_sku) REFERENCES products(sku),
     FOREIGN KEY (category_name) REFERENCES categories(name)
 );
+
+CREATE TABLE themes2 (
+    tenant_id VARCHAR(64),
+    name VARCHAR(64),
+    description VARCHAR(200),
+    PRIMARY KEY (tenant_id, name)
+);
+

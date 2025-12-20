@@ -21,3 +21,9 @@ type Product struct {
 func (p *Product) GetStringID() string {
 	return p.SKU
 }
+
+// Theme represents a thematic entity with a unique name and description.
+type Theme struct {
+	Name        string `data:"key" gorm:"primaryKey"`
+	Description string
+}
