@@ -27,3 +27,8 @@ type Theme struct {
 	Name        string `data:"key" gorm:"primaryKey"`
 	Description string
 }
+
+// GetStringID returns the SKU value of the Product instance.
+func (t *Theme) GetStringID() string {
+	return t.Name
+}
