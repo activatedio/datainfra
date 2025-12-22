@@ -97,6 +97,34 @@ func TestProductRepository_ListByCategory(t *testing.T) {
 	})
 }
 
+func TestProductRepository_GetSearchPredicates(t *testing.T) {
+	a := assert.New(t)
+	r := require.New(t)
+	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider, unit repository.ProductRepository) {
+
+		ctx := cp.GetContext()
+
+		got, err := unit.GetSearchPredicates(ctx)
+		r.NoError(err)
+		a.Equal([]*data.SearchPredicateDescriptor{
+			{
+				Name:  "@keywords",
+				Label: "Keywords",
+				Operators: []data.SearchOperator{
+					data.SearchOperatorStringMatch,
+				},
+			},
+			{
+				Name:  "@query",
+				Label: "Query",
+				Operators: []data.SearchOperator{
+					data.SearchOperatorStringMatch,
+				},
+			},
+		}, got)
+	})
+}
+
 func TestProductRepository_Associate(t *testing.T) {
 	a := assert.New(t)
 	r := require.New(t)
