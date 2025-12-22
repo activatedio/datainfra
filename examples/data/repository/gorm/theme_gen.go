@@ -48,7 +48,7 @@ func NewThemeRepository(ThemeRepositoryParams) repository.ThemeRepository {
 		Template: template,
 		CrudTemplate: gorm.NewMappingCrudTemplate[*model.Theme, *ThemeInternal, string](gorm.MappingCrudTemplateImplOptions[*model.Theme, *ThemeInternal, string]{
 			Template:    template,
-			FindBuilder: gorm.SingleFindBuilder[string]("themes2.Name"),
+			FindBuilder: gorm.SingleFindBuilder[string]("themes2.name"),
 		}),
 	}
 }
