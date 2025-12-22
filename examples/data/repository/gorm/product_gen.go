@@ -47,7 +47,7 @@ func NewProductRepository(params ProductRepositoryParams) repository.ProductRepo
 		Template: template,
 		CrudTemplate: gorm.NewMappingCrudTemplate[*model.Product, *ProductInternal, string](gorm.MappingCrudTemplateImplOptions[*model.Product, *ProductInternal, string]{
 			Template:    template,
-			FindBuilder: gorm.SingleFindBuilder[string]("products.SKU"),
+			FindBuilder: gorm.SingleFindBuilder[string]("products.sku"),
 		}),
 		SearchTemplate: gorm.NewMappingSearchTemplate[*model.Product, *ProductInternal](gorm.MappingSearchTemplateParams[*model.Product, *ProductInternal]{
 			Template: template,

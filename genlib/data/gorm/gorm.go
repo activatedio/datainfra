@@ -290,7 +290,7 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 		if len(jh.KeyFields) == 1 {
 			crudParamsFields.Add(jen.Id("FindBuilder").Op(":").Qual(ImportThis, "SingleFindBuilder").Types(
-				jh.GenerateKeyCode(_if.InterfaceImport)).Params(jen.Lit(fmt.Sprintf("%s.%s", jh.TableName, jh.KeyFields[0].Name))).Op(","))
+				jh.GenerateKeyCode(_if.InterfaceImport)).Params(jen.Lit(fmt.Sprintf("%s.%s", jh.TableName, strcase.ToSnake(jh.KeyFields[0].Name)))).Op(","))
 		}
 
 		return s.Add(jen.Id("CrudTemplate").Op(":").Qual(ImportThis, "NewMappingCrudTemplate").Types(

@@ -45,7 +45,7 @@ func NewCategoryRepository(CategoryRepositoryParams) repository.CategoryReposito
 		Template: template,
 		CrudTemplate: gorm.NewMappingCrudTemplate[*model.Category, *CategoryInternal, string](gorm.MappingCrudTemplateImplOptions[*model.Category, *CategoryInternal, string]{
 			Template:    template,
-			FindBuilder: gorm.SingleFindBuilder[string]("categories.Name"),
+			FindBuilder: gorm.SingleFindBuilder[string]("categories.name"),
 		}),
 		FilterKeysTemplate: gorm.NewMappingFilterKeysTemplate[*model.Category, *CategoryInternal, string](gorm.MappingFilterKeysTemplateImplOptions[*model.Category, *CategoryInternal, string]{
 			Template:   template,
