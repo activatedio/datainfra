@@ -42,6 +42,8 @@ func (e Entry) GetJenHelper() JenHelper {
 	buildKeys(&res.KeyFields, e.Type)
 
 	switch {
+	case len(res.KeyFields) == 0:
+		panic("key fields not set for " + e.Type.Name())
 	case len(res.KeyFields) == 1:
 		res.keyCodeGen = &fixedKeyCodeGenerator{
 			code: jen.Qual(res.KeyFields[0].Type.PkgPath(), res.KeyFields[0].Type.Name()),
