@@ -83,6 +83,11 @@ type Ctor struct {
 	Entry *data.Entry
 }
 
+// Search contains predicates for gorm
+type Search struct {
+	Predicates data.SearchPredicates
+}
+
 // TemplateFields defines a structured type used for mapping data between internal and external representations.
 type TemplateFields struct{}
 
@@ -310,7 +315,8 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
-		return data.HasImplementation[data.Search](in.Entry)
+		// Need both top level and gorm search
+		return data.HasImplementation[data.Search](in.Entry) && data.HasImplementation[Search](in.Entry)
 	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFields)
@@ -322,21 +328,21 @@ func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		))
 
 	}).AddStatementHandler(genlib.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
-		return data.HasImplementation[data.Search](in.Entry)
+		return data.HasImplementation[data.Search](in.Entry) && data.HasImplementation[Search](in.Entry)
 	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFieldAssignments)
 		d := _if.Entry
 		jh := d.GetJenHelper()
 
-		srch := data.GetImplementation[data.Search](d)
+		gs := data.GetImplementation[Search](d)
 
 		var predicates *jen.Statement
 
-		if len(srch.Predicates) == 0 {
+		if len(gs.Predicates) == 0 {
 			predicates = jen.Nil()
 		} else {
-			predicates = srch.Predicates.Generate()
+			predicates = gs.Predicates.Generate()
 		}
 
 		internalName := jh.StructName + "Internal"
