@@ -36,7 +36,14 @@ func main() {
 				data.Crud{
 					Operations: data.OperationsCrud,
 				},
-				data.Search{
+				data.Search{},
+				data.Associate{
+					ChildType: reflect.TypeFor[model.Category](),
+				},
+				data.ListByAssociatedKey{
+					AssociatedType: reflect.TypeFor[model.Category](),
+				},
+				gorm.Search{
 					Predicates: []data.SearchPredicateEntry{
 						{
 							Name:      "@keywords",
@@ -49,12 +56,6 @@ func main() {
 							Operators: []data2.SearchOperator{data2.SearchOperatorStringMatch},
 						},
 					},
-				},
-				data.Associate{
-					ChildType: reflect.TypeFor[model.Category](),
-				},
-				data.ListByAssociatedKey{
-					AssociatedType: reflect.TypeFor[model.Category](),
 				},
 			},
 		},

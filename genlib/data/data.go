@@ -32,7 +32,6 @@ type Crud struct {
 
 // Search defines a type used for implementing search-related logic and behavior in the system.
 type Search struct {
-	Predicates SearchPredicates
 }
 
 // SearchPredicates represents a slice of SearchPredicateDescriptor instances.
