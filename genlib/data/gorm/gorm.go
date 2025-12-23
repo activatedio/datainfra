@@ -283,6 +283,7 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		jh := GetGormJenHelper(d)
 
 		c := data.GetImplementation[data.Crud](d)
+		i := data.GetImplementation[Implementation](d)
 
 		if c.Operations.Intersect(data.OperationsCrud).Len() == 0 {
 			// Short circuit
@@ -293,7 +294,11 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 		crudParamsFields := r.BuildStatement(&jen.Statement{}, &CrudTemplateParamsField{})
 
-		if len(jh.KeyFields) == 1 {
+		switch {
+
+		case i != nil && i.CustomFindBuilder != nil:
+			crudParamsFields.Add(jen.Id("FindBuilder").Add(i.CustomFindBuilder).Op(","))
+		case len(jh.KeyFields) == 1:
 			crudParamsFields.Add(jen.Id("FindBuilder").Op(":").Qual(ImportThis, "SingleFindBuilder").Types(
 				jh.GenerateKeyCode(_if.InterfaceImport)).Params(jen.Lit(fmt.Sprintf("%s.%s", jh.TableName, strcase.ToSnake(jh.KeyFields[0].Name)))).Op(","))
 		}
