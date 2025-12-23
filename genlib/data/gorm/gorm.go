@@ -297,7 +297,7 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		switch {
 
 		case i != nil && i.CustomFindBuilder != nil:
-			crudParamsFields.Add(jen.Id("FindBuilder").Add(i.CustomFindBuilder).Op(","))
+			crudParamsFields.Add(jen.Id("FindBuilder").Op(":").Add(i.CustomFindBuilder).Op(","))
 		case len(jh.KeyFields) == 1:
 			crudParamsFields.Add(jen.Id("FindBuilder").Op(":").Qual(ImportThis, "SingleFindBuilder").Types(
 				jh.GenerateKeyCode(_if.InterfaceImport)).Params(jen.Lit(fmt.Sprintf("%s.%s", jh.TableName, strcase.ToSnake(jh.KeyFields[0].Name)))).Op(","))
