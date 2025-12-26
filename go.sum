@@ -1,3 +1,5 @@
+github.com/activatedio/gen v0.1.0 h1:LQrGOLDj7OK8equq/gxM9yPAFnD19tDu8rkY9m8/z0o=
+github.com/activatedio/gen v0.1.0/go.mod h1:24nhBII0r/EO8li//ksDWc5tNc1nIoHyVga4gJMxjOQ=
 github.com/coreos/go-systemd/v22 v22.5.0/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/dave/jennifer v1.7.1 h1:B4jJJDHelWcDhlRQxWeo0Npa/pYKBLrirAQoTN45txo=
 github.com/dave/jennifer v1.7.1/go.mod h1:nXbxhEmQfOZhWml3D1cDK5M1FLnMSozpbFN/m3RmGZc=

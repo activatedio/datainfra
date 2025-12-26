@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/activatedio/datainfra/genlib"
 	"github.com/activatedio/datainfra/pkg/data"
+	"github.com/activatedio/gen"
 	"github.com/dave/jennifer/jen"
 )
 
@@ -27,7 +27,7 @@ func (t *Types) GetPackage() string {
 
 // Crud represents a type encapsulating a set of operations for performing basic CRUD (Create, Read, Update, Delete) functionality.
 type Crud struct {
-	Operations *genlib.Set[Operation]
+	Operations *gen.Set[Operation]
 }
 
 // Search defines a type used for implementing search-related logic and behavior in the system.
@@ -105,8 +105,8 @@ type InterfaceMethods struct {
 
 // addBaseHandlers adds a file handler for processing repository interfaces based on provided type entries.
 // It registers the handler using a key generated for the *Types type and returns the updated HandlerEntries instance.
-func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
-	return he.AddFileHandler(genlib.NewKey[*Types](), func(f *jen.File, r genlib.Registry, entry any) {
+func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
+	return he.AddFileHandler(gen.NewKey[*Types](), func(f *jen.File, r gen.Registry, entry any) {
 
 		t := entry.(*Types)
 		ds := t.Entries
@@ -132,11 +132,11 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 // addCrudHandlers adds CRUD operation handlers to the given HandlerEntries if the InterfaceMethods has a Crud implementation.
 // It registers handlers for operations such as FindByKey, ExistsByKey, ListAll, Create, Update, Delete, and DeleteEntity.
-func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addCrudHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
 		return HasImplementation[Crud](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		i := entry.(*InterfaceMethods)
 		d := i.Entry
@@ -197,11 +197,11 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 }
 
 // addSearchHandlers registers search-related statement handlers into the provided HandlerEntries and returns the updated instance.
-func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addSearchHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
 		return HasImplementation[Search](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		i := entry.(*InterfaceMethods)
 
@@ -220,11 +220,11 @@ func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 }
 
 // addAssociateHandlers registers a StatementHandler for handling Associate implementations in the provided HandlerEntries.
-func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
 		return HasImplementation[Associate](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		i := entry.(*InterfaceMethods)
 
@@ -249,11 +249,11 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 // addFilterKeysHandlers registers a statement handler that binds the FilterKeys operation to entries implementing the FilterKeys interface.
 // The function checks if an entry supports the FilterKeys implementation and generates the corresponding handler logic.
 // Returns the updated HandlerEntries with the newly added statement handler for chaining.
-func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addFilterKeysHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
 		return HasImplementation[FilterKeys](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		i := entry.(*InterfaceMethods)
 
@@ -273,11 +273,11 @@ func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 // addListByAssociatedKeyHandlers appends a statement handler to manage ListByAssociatedKey operations for InterfaceMethods.
 // It sets up handlers to generate code for listing entries by their associated key using specific type metadata.
-func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
 		return HasImplementation[ListByAssociatedKey](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		i := entry.(*InterfaceMethods)
 
@@ -308,9 +308,9 @@ func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEn
 }
 
 // NewDataRegistry initializes and returns a new genlib.Registry instance with predefined handler entries for various operations.
-func NewDataRegistry() genlib.Registry {
+func NewDataRegistry() gen.Registry {
 
-	he := genlib.NewHandlerEntries()
+	he := gen.NewHandlerEntries()
 	he = addBaseHandlers(he)
 	he = addCrudHandlers(he)
 	he = addSearchHandlers(he)
@@ -318,6 +318,6 @@ func NewDataRegistry() genlib.Registry {
 	he = addFilterKeysHandlers(he)
 	he = addListByAssociatedKeyHandlers(he)
 
-	return genlib.NewRegistry().WithHandlerEntries(he)
+	return gen.NewRegistry().WithHandlerEntries(he)
 
 }

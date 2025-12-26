@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/activatedio/datainfra/genlib"
+	"github.com/activatedio/gen"
 	"github.com/dave/jennifer/jen"
 )
 
@@ -157,7 +157,7 @@ var (
 	// OperationDelete defines an operation for deleting items.
 	OperationDelete = Operation{"delete"}
 	// OperationsCrud represents a frozen set containing all CRUD operations.
-	OperationsCrud = genlib.NewFrozenSet(
+	OperationsCrud = gen.NewFrozenSet(
 		OperationFindByKey, OperationList, OperationCreate, OperationUpdate, OperationDelete,
 	)
 )
