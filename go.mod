@@ -3,6 +3,7 @@ module github.com/activatedio/datainfra
 go 1.24.6
 
 require (
+	github.com/activatedio/gen v0.1.0
 	github.com/dave/jennifer v1.7.1
 	github.com/gertd/go-pluralize v0.2.1
 	github.com/glebarez/sqlite v1.11.0

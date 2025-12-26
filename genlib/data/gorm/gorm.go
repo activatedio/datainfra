@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/activatedio/datainfra/genlib"
 	"github.com/activatedio/datainfra/genlib/data"
+	"github.com/activatedio/gen"
 	"github.com/dave/jennifer/jen"
 	"github.com/iancoleman/strcase"
 )
@@ -95,14 +95,14 @@ type TemplateFields struct{}
 type CrudTemplateParamsField struct{}
 
 // addBaseHandlers configures and registers default directory, file, and statement handlers in the provided HandlerEntries.
-func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddDirectoryHandler(genlib.NewKey[*DirectoryMain](), func(dirPath string, r genlib.Registry, entry any) {
+	return he.AddDirectoryHandler(gen.NewKey[*DirectoryMain](), func(dirPath string, r gen.Registry, entry any) {
 
 		m := entry.(*DirectoryMain)
 
 		for _, e := range m.Entries {
-			genlib.WithFile(m.Package, filepath.Join(dirPath, fmt.Sprintf("%s_gen.go", strcase.ToSnake(e.Type.Name()))), func(file *jen.File) {
+			gen.WithFile(m.Package, filepath.Join(dirPath, fmt.Sprintf("%s_gen.go", strcase.ToSnake(e.Type.Name()))), func(file *jen.File) {
 				r.RunFileHandler(file, &FileMain{
 					InterfaceImport: m.InterfaceImport,
 					Entry:           &e,
@@ -111,7 +111,7 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		}
 
 		if m.GenerateIndex {
-			genlib.WithFile(m.Package, filepath.Join(dirPath, "index_gen.go"), func(file *jen.File) {
+			gen.WithFile(m.Package, filepath.Join(dirPath, "index_gen.go"), func(file *jen.File) {
 				r.RunFileHandler(file, &IndexMain{
 					IndexModule: m.IndexModule,
 					Entries:     m.Entries,
@@ -119,7 +119,7 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 			})
 		}
 
-	}).AddFileHandler(genlib.NewKey[*IndexMain](), func(f *jen.File, _ genlib.Registry, entry any) {
+	}).AddFileHandler(gen.NewKey[*IndexMain](), func(f *jen.File, _ gen.Registry, entry any) {
 
 		im := entry.(*IndexMain)
 
@@ -141,7 +141,7 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 			),
 		)
 
-	}).AddFileHandler(genlib.NewKey[*FileMain](), func(f *jen.File, r genlib.Registry, entry any) {
+	}).AddFileHandler(gen.NewKey[*FileMain](), func(f *jen.File, r gen.Registry, entry any) {
 
 		fm := entry.(*FileMain)
 		d := fm.Entry
@@ -207,14 +207,14 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		f.Func().Id(fmt.Sprintf("New%sRepository", jh.StructName)).Params(
 			jen.Id(paramsID).Id(paramsType),
 		).Qual(fm.InterfaceImport, jh.InterfaceName).Block(*ctor...).Line()
-	}).AddStatementHandler(genlib.NewKey[*InternalSuperFields](), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(gen.NewKey[*InternalSuperFields](), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		fm := entry.(*InternalSuperFields)
 		d := fm.Entry
 		jh := d.GetJenHelper()
 		return s.Add(jen.Op("*").Add(jh.StructType))
 
-	}).AddStatementHandler(genlib.NewKey[*Ctor](), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}).AddStatementHandler(gen.NewKey[*Ctor](), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		fm := entry.(*Ctor)
 		d := fm.Entry
@@ -244,18 +244,18 @@ func addBaseHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		).Call(jen.Qual(ImportThis, "MappingTemplateParams").Types(
 			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
 		).Block(*tmplStmt...)))
-	}).AddStatementHandler(genlib.NewKey[*ImplFieldAssignments](), func(s *jen.Statement, _ genlib.Registry, _ any) *jen.Statement {
+	}).AddStatementHandler(gen.NewKey[*ImplFieldAssignments](), func(s *jen.Statement, _ gen.Registry, _ any) *jen.Statement {
 		return s.Add(jen.Id("Template").Op(":").Id("template").Op(","))
 	})
 }
 
 // addCrudHandlers adds CRUD-specific statement handlers to the provided HandlerEntries based on certain entry conditions.
 // It registers handlers for CRUD template generation and field assignments if CRUD operations are applicable.
-func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addCrudHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
 		return data.HasImplementation[data.Crud](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFields)
 		d := _if.Entry
@@ -274,9 +274,9 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 			jh.GenerateKeyCode(_if.InterfaceImport),
 		))
 
-	}).AddStatementHandler(genlib.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
+	}).AddStatementHandler(gen.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
 		return data.HasImplementation[data.Crud](in.Entry)
-	}), func(s *jen.Statement, r genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, r gen.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFieldAssignments)
 		d := _if.Entry
@@ -317,12 +317,12 @@ func addCrudHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 }
 
 // addSearchHandlers registers statement handlers for search implementations in handler entries and returns the updated instance.
-func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addSearchHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
 		// Need both top level and gorm search
 		return data.HasImplementation[data.Search](in.Entry) && data.HasImplementation[Search](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFields)
 		d := _if.Entry
@@ -332,9 +332,9 @@ func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 			jen.Op("*").Add(jh.StructType),
 		))
 
-	}).AddStatementHandler(genlib.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
+	}).AddStatementHandler(gen.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
 		return data.HasImplementation[data.Search](in.Entry) && data.HasImplementation[Search](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFieldAssignments)
 		d := _if.Entry
@@ -367,7 +367,7 @@ func addSearchHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 // addAssociateHandlers adds handlers to facilitate the management of associate relationships between data entities.
 // It updates the given HandlerEntries by registering statement and file handlers for entries with 'Associate' implementations.
 // Returns the updated HandlerEntries instance.
-func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 	type helper struct {
 		parentHelper JenHelper
@@ -389,18 +389,18 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 	}
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
 		return data.HasImplementation[data.Associate](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		f := entry.(*ImplFields)
 		h := toHelper(f.Entry)
 
 		return s.Add(jen.Id(fmt.Sprintf("%sRepository", strcase.ToLowerCamel(h.childHelper.StructName))).Qual(f.InterfaceImport, h.childHelper.InterfaceName))
 
-	}).AddStatementHandler(genlib.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
+	}).AddStatementHandler(gen.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
 		return data.HasImplementation[data.Associate](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		f := entry.(*ImplFieldAssignments)
 		h := toHelper(f.Entry)
@@ -409,9 +409,9 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 			Id("params").
 			Dot(fmt.Sprintf("%sRepository", h.childHelper.StructName)).Op(","))
 
-	}).AddStatementHandler(genlib.NewKeyWithTest[*CtorParamsFields](func(in *CtorParamsFields) bool {
+	}).AddStatementHandler(gen.NewKeyWithTest[*CtorParamsFields](func(in *CtorParamsFields) bool {
 		return data.HasImplementation[data.Associate](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		f := entry.(*CtorParamsFields)
 		h := toHelper(f.Entry)
@@ -419,9 +419,9 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 		return s.Add(jen.Id(fmt.Sprintf("%sRepository", h.childHelper.StructName)).
 			Qual(f.InterfaceImport, fmt.Sprintf("%sRepository", h.childHelper.StructName)))
 
-	}).AddFileHandler(genlib.NewKeyWithTest[*FileMain](func(in *FileMain) bool {
+	}).AddFileHandler(gen.NewKeyWithTest[*FileMain](func(in *FileMain) bool {
 		return data.HasImplementation[data.Associate](in.Entry)
-	}), func(f *jen.File, _ genlib.Registry, entry any) {
+	}), func(f *jen.File, _ gen.Registry, entry any) {
 
 		fm := entry.(*FileMain)
 		h := toHelper(fm.Entry)
@@ -465,11 +465,11 @@ func addAssociateHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 // addFilterKeysHandlers registers statement handlers to process implementations of FilterKeys in the provided HandlerEntries.
 // It ensures compatibility with ImplFields and ImplFieldAssignments types and handles filters by generating appropriate templates.
-func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addFilterKeysHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddStatementHandler(genlib.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
+	return he.AddStatementHandler(gen.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
 		return data.HasImplementation[data.FilterKeys](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFields)
 		d := _if.Entry
@@ -477,9 +477,9 @@ func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 		return s.Add(jen.Qual(data.ImportThis, "FilterKeysTemplate").Types(jh.GenerateKeyCode(_if.InterfaceImport)))
 
-	}).AddStatementHandler(genlib.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
+	}).AddStatementHandler(gen.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
 		return data.HasImplementation[data.FilterKeys](in.Entry)
-	}), func(s *jen.Statement, _ genlib.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
 
 		_if := entry.(*ImplFieldAssignments)
 		d := _if.Entry
@@ -508,11 +508,11 @@ func addFilterKeysHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
 
 // addListByAssociatedKeyHandlers adds file handlers for ListByAssociatedKey functionality in the provided HandlerEntries.
 // It generates methods to list items by associated keys, ensuring constraints like the presence of a single key.
-func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEntries {
+func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
-	return he.AddFileHandler(genlib.NewKeyWithTest[*FileMain](func(in *FileMain) bool {
+	return he.AddFileHandler(gen.NewKeyWithTest[*FileMain](func(in *FileMain) bool {
 		return data.HasImplementation[data.ListByAssociatedKey](in.Entry)
-	}), func(f *jen.File, _ genlib.Registry, entry any) {
+	}), func(f *jen.File, _ gen.Registry, entry any) {
 
 		i := entry.(*FileMain)
 
@@ -589,9 +589,9 @@ func addListByAssociatedKeyHandlers(he *genlib.HandlerEntries) *genlib.HandlerEn
 }
 
 // NewDataRegistry initializes a new genlib.Registry with predefined sets of handler entries for various operations.
-func NewDataRegistry() genlib.Registry {
+func NewDataRegistry() gen.Registry {
 
-	he := genlib.NewHandlerEntries()
+	he := gen.NewHandlerEntries()
 
 	he = addBaseHandlers(he)
 	he = addCrudHandlers(he)
@@ -600,5 +600,5 @@ func NewDataRegistry() genlib.Registry {
 	he = addFilterKeysHandlers(he)
 	he = addListByAssociatedKeyHandlers(he)
 
-	return genlib.NewRegistry().WithHandlerEntries(he)
+	return gen.NewRegistry().WithHandlerEntries(he)
 }

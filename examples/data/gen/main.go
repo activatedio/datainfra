@@ -5,10 +5,10 @@ import (
 	"reflect"
 
 	"github.com/activatedio/datainfra/examples/data/model"
-	"github.com/activatedio/datainfra/genlib"
 	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/activatedio/datainfra/genlib/data/gorm"
 	data2 "github.com/activatedio/datainfra/pkg/data"
+	"github.com/activatedio/gen"
 	"github.com/dave/jennifer/jen"
 )
 
@@ -78,16 +78,16 @@ func main() {
 		Entries: ds,
 	})
 
-	gorm.NewDataRegistry().WithHandlerEntries(genlib.NewHandlerEntries().AddStatementHandler(
-		genlib.NewKeyWithTest[*gorm.InternalFields](func(in *gorm.InternalFields) bool {
+	gorm.NewDataRegistry().WithHandlerEntries(gen.NewHandlerEntries().AddStatementHandler(
+		gen.NewKeyWithTest[*gorm.InternalFields](func(in *gorm.InternalFields) bool {
 			return in.Entry.Type == reflect.TypeFor[model.Theme]()
-		}), func(s *jen.Statement, _ genlib.Registry, _ any) *jen.Statement {
+		}), func(s *jen.Statement, _ gen.Registry, _ any) *jen.Statement {
 			return s.Add(jen.Id("TenantID").String())
 		},
 	).AddFileHandler(
-		genlib.NewKeyWithTest[*gorm.InternalFunctions](func(in *gorm.InternalFunctions) bool {
+		gen.NewKeyWithTest[*gorm.InternalFunctions](func(in *gorm.InternalFunctions) bool {
 			return in.Entry.Type == reflect.TypeFor[model.Theme]()
-		}), func(f *jen.File, _ genlib.Registry, _ any) {
+		}), func(f *jen.File, _ gen.Registry, _ any) {
 			f.Comment("SetTenantID sets the tenant ID for the ThemeInternal")
 			f.Func().Params(jen.Id("r").Op("*").Id("ThemeInternal")).Id("SetTenantID").Params(
 				jen.Id("id").String(),
