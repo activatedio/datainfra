@@ -228,19 +228,22 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 		i := entry.(*InterfaceMethods)
 
-		a := GetImplementation[Associate](i.Entry)
+		for _, a := range GetImplementations[Associate](i.Entry) {
 
-		jh := i.Entry.GetJenHelper()
+			jh := i.Entry.GetJenHelper()
 
-		_e := &Entry{
-			Type: a.ChildType,
+			_e := &Entry{
+				Type: a.ChildType,
+			}
+
+			jhc := _e.GetJenHelper()
+
+			ckc := jhc.GenerateKeyCode("")
+
+			s.Add(jen.Id(fmt.Sprintf("Associate%s", Pl.Plural(jhc.StructName))).Params(jen.Id("ctx").Add(QualCtx), jen.Id("key").Add(jh.GenerateKeyCode("")), jen.Id("add").Index().Add(ckc), jen.Id("remove").Index().Add(ckc)).Params(jen.Error()))
 		}
 
-		jhc := _e.GetJenHelper()
-
-		ckc := jhc.GenerateKeyCode("")
-
-		return s.Add(jen.Id(fmt.Sprintf("Associate%s", Pl.Plural(jhc.StructName))).Params(jen.Id("ctx").Add(QualCtx), jen.Id("key").Add(jh.GenerateKeyCode("")), jen.Id("add").Index().Add(ckc), jen.Id("remove").Index().Add(ckc)).Params(jen.Error()))
+		return s
 
 	})
 
@@ -281,29 +284,31 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 
 		i := entry.(*InterfaceMethods)
 
-		a := GetImplementation[ListByAssociatedKey](i.Entry)
+		for _, a := range GetImplementations[ListByAssociatedKey](i.Entry) {
 
-		jh := i.Entry.GetJenHelper()
+			jh := i.Entry.GetJenHelper()
 
-		_e := &Entry{
-			Type: a.AssociatedType,
+			_e := &Entry{
+				Type: a.AssociatedType,
+			}
+
+			jha := _e.GetJenHelper()
+
+			cka := jha.GenerateKeyCode("")
+
+			s.Add(jen.Id(fmt.Sprintf("ListBy%s", jha.StructName)).Params(
+				jen.Id("ctx").Add(QualCtx),
+				jen.Id("key").Add(cka),
+				jen.Id("params").Qual(ImportThis, "ListParams"),
+			).Params(
+				jen.Op("*").Qual(ImportThis, "List").Types(
+					jen.Op("*").Add(jh.StructType),
+				),
+				jen.Error(),
+			))
 		}
 
-		jha := _e.GetJenHelper()
-
-		cka := jha.GenerateKeyCode("")
-
-		return s.Add(jen.Id(fmt.Sprintf("ListBy%s", jha.StructName)).Params(
-			jen.Id("ctx").Add(QualCtx),
-			jen.Id("key").Add(cka),
-			jen.Id("params").Qual(ImportThis, "ListParams"),
-		).Params(
-			jen.Op("*").Qual(ImportThis, "List").Types(
-				jen.Op("*").Add(jh.StructType),
-			),
-			jen.Error(),
-		))
-
+		return s
 	})
 }
 
