@@ -58,5 +58,5 @@ func GetImplementations[I any](e *Entry, opts ...ImplementationOption[I]) []I {
 
 // HasImplementation returns true if the entry has an implementation of the given type
 func HasImplementation[I any](e *Entry) bool {
-	return GetImplementation[I](e) != nil
+	return len(GetImplementations[I](e)) > 0
 }
