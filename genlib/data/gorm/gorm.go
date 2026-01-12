@@ -271,7 +271,7 @@ func addCrudHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 		return s.Add(jen.Qual(data.ImportThis, "CrudTemplate").Types(
 			jen.Op("*").Add(jh.StructType),
-			jh.GenerateKeyCode(_if.InterfaceImport),
+			jh.GenerateKeyCode(),
 		))
 
 	}).AddStatementHandler(gen.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
@@ -298,15 +298,27 @@ func addCrudHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 		case i != nil && i.CustomFindBuilder != nil:
 			crudParamsFields.Add(jen.Id("FindBuilder").Op(":").Add(i.CustomFindBuilder).Op(","))
-		case len(jh.KeyFields) == 1:
-			crudParamsFields.Add(jen.Id("FindBuilder").Op(":").Qual(ImportThis, "SingleFindBuilder").Types(
-				jh.GenerateKeyCode(_if.InterfaceImport)).Params(jen.Lit(fmt.Sprintf("%s.%s", jh.TableName, strcase.ToSnake(jh.KeyFields[0].Name)))).Op(","))
+		default:
+
+			fields := &jen.Statement{}
+
+			for _, f := range jh.Keys {
+				fields.Add(jen.Qual(ImportThis, "FindPredicate").Types(jh.GenerateKeyCode()).Block(
+					jen.Id("Accessor").Op(":").Func().Params(jen.Id(BaseKeyId).Add(jh.GenerateKeyCode())).Params(jen.Any()).Block(
+						jen.Return().Add(f.Accessor),
+					).Op(","),
+					jen.Id("Column").Op(":").Lit(strcase.ToSnake(f.Name)).Op(","),
+				))
+			}
+
+			crudParamsFields.Add(jen.Id("FindBuilder").Op(":").Qual(ImportThis, "NewFindBuilder").Types(
+				jh.GenerateKeyCode()).Params(*fields...).Op(","))
 		}
 
 		return s.Add(jen.Id("CrudTemplate").Op(":").Qual(ImportThis, "NewMappingCrudTemplate").Types(
-			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName), jh.GenerateKeyCode(_if.InterfaceImport),
+			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName), jh.GenerateKeyCode(),
 		).Params(jen.Qual(ImportThis, "MappingCrudTemplateImplOptions").Types(
-			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName), jh.GenerateKeyCode(_if.InterfaceImport),
+			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName), jh.GenerateKeyCode(),
 		).Block(
 			jen.Id("Template").Op(":").Id("template").Op(","),
 			crudParamsFields,
@@ -437,8 +449,8 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 		fm := entry.(*FileMain)
 		for _, h := range toHelper(fm.Entry) {
 
-			kc := h.parentHelper.GenerateKeyCode("")
-			ckc := h.childHelper.GenerateKeyCode("")
+			kc := h.parentHelper.GenerateKeyCode()
+			ckc := h.childHelper.GenerateKeyCode()
 
 			implName := strcase.ToLowerCamel(h.parentHelper.StructName) + "RepositoryImpl"
 			receiverID := func() *jen.Statement { return jen.Id("r") }
@@ -487,7 +499,7 @@ func addFilterKeysHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 		d := _if.Entry
 		jh := d.GetJenHelper()
 
-		return s.Add(jen.Qual(data.ImportThis, "FilterKeysTemplate").Types(jh.GenerateKeyCode(_if.InterfaceImport)))
+		return s.Add(jen.Qual(data.ImportThis, "FilterKeysTemplate").Types(jh.GenerateKeyCode()))
 
 	}).AddStatementHandler(gen.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
 		return data.HasImplementation[data.FilterKeys](in.Entry)
@@ -500,7 +512,7 @@ func addFilterKeysHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 		internalName := jh.StructName + "Internal"
 
 		typs := &jen.Statement{}
-		typs.Add(jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName), jh.GenerateKeyCode(_if.InterfaceImport))
+		typs.Add(jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName), jh.GenerateKeyCode())
 
 		if len(jh.Keys) != 1 {
 			fmt.Println(jh.Keys)
@@ -538,7 +550,7 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 
 			jha := GetGormJenHelper(_e)
 
-			cka := jha.GenerateKeyCode("")
+			cka := jha.GenerateKeyCode()
 
 			receiverID := func() *jen.Statement { return jen.Id("r") }
 

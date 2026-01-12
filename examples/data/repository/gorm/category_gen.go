@@ -44,18 +44,23 @@ func NewCategoryRepository(CategoryRepositoryParams) repository.CategoryReposito
 	return &categoryRepositoryImpl{
 		Template: template,
 		CrudTemplate: gorm.NewMappingCrudTemplate[*model.Category, *CategoryInternal, string](gorm.MappingCrudTemplateImplOptions[*model.Category, *CategoryInternal, string]{
-			Template:    template,
-			FindBuilder: gorm.SingleFindBuilder[string]("categories.name"),
+			Template: template,
+			FindBuilder: gorm.NewFindBuilder[string](gorm.FindPredicate[string]{
+				Accessor: func(key string) any {
+					return key
+				},
+				Column: "name",
+			}),
 		}),
 		FilterKeysTemplate: gorm.NewMappingFilterKeysTemplate[*model.Category, *CategoryInternal, string](gorm.MappingFilterKeysTemplateImplOptions[*model.Category, *CategoryInternal, string]{
 			Template:   template,
-			FindColumn: "name",
+			FindColumn: "Name",
 		}),
 	}
 }
 
 func (r *categoryRepositoryImpl) ListByProduct(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Category], error) {
 	return r.Template.DoList(ctx, func(tx *gorm1.DB) *gorm1.DB {
-		return tx.Joins("INNER JOIN product_categories ON product_categories.category_name = categories.name").Where("product_categories.product_sku=?", key)
+		return tx.Joins("INNER JOIN product_categories ON product_categories.category_Name = categories.Name").Where("product_categories.product_SKU=?", key)
 	}, params)
 }

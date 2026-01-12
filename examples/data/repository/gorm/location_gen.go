@@ -1,0 +1,57 @@
+package gorm
+
+import (
+	model "github.com/activatedio/datainfra/examples/data/model"
+	repository "github.com/activatedio/datainfra/examples/data/repository"
+	data "github.com/activatedio/datainfra/pkg/data"
+	gorm "github.com/activatedio/datainfra/pkg/data/gorm"
+	fx "go.uber.org/fx"
+)
+
+// LocationInternal is the internal representation of Location
+type LocationInternal struct {
+	*model.Location
+}
+
+// locationRepositoryImpl is the implementation of LocationRepository
+type locationRepositoryImpl struct {
+	Template gorm.MappingTemplate[*model.Location, *LocationInternal]
+	data.CrudTemplate[*model.Location, model.LocationKey]
+}
+
+// LocationRepositoryParams are the parameters for LocationRepository
+type LocationRepositoryParams struct {
+	fx.In
+}
+
+// NewLocationRepository creates a new LocationRepository
+func NewLocationRepository(LocationRepositoryParams) repository.LocationRepository {
+	template := gorm.NewMappingTemplate[*model.Location, *LocationInternal](gorm.MappingTemplateParams[*model.Location, *LocationInternal]{
+		Table: "locations",
+		ToInternal: func(m *model.Location) *LocationInternal {
+			return &LocationInternal{
+				Location: m,
+			}
+		},
+		FromInternal: func(m *LocationInternal) *model.Location {
+			return m.Location
+		},
+	})
+	return &locationRepositoryImpl{
+		Template: template,
+		CrudTemplate: gorm.NewMappingCrudTemplate[*model.Location, *LocationInternal, model.LocationKey](gorm.MappingCrudTemplateImplOptions[*model.Location, *LocationInternal, model.LocationKey]{
+			Template: template,
+			FindBuilder: gorm.NewFindBuilder[model.LocationKey](gorm.FindPredicate[model.LocationKey]{
+				Accessor: func(key model.LocationKey) any {
+					return key.City
+				},
+				Column: "city",
+			}, gorm.FindPredicate[model.LocationKey]{
+				Accessor: func(key model.LocationKey) any {
+					return key.State
+				},
+				Column: "state",
+			}),
+		}),
+	}
+}

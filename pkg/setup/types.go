@@ -1,5 +1,7 @@
 package setup
 
+import "context"
+
 // ResourceExistsError represents an error indicating a resource with the specified name already exists.
 type ResourceExistsError struct {
 	name string
@@ -19,7 +21,7 @@ type Params struct {
 // Setup defines methods to initialize and teardown environments for testing.
 type Setup interface {
 	// Setup initializes the environment, such as databases, and returns an error if setup fails.
-	Setup(params Params) error
+	Setup(ctx context.Context, params Params) error
 	// Teardown cleans up the environment, reversing setup processes, and returns an error if teardown fails.
-	Teardown() error
+	Teardown(ctx context.Context) error
 }

@@ -130,9 +130,18 @@ func (c *crudTemplateImpl[E, I, K]) DeleteEntity(ctx context.Context, entity E) 
 	return GetDB(ctx).Table(c.template.GetTable()).Delete(entity).Error
 }
 
-// SingleFindBuilder returns a FindBuilder function that constructs a query to find an entity based on the specified column.
-func SingleFindBuilder[K comparable](findColumn string) FindBuilder[K] {
+// FindPredicate defines a predicate for finding entities based on a column and accessor function.
+type FindPredicate[K comparable] struct {
+	Accessor func(in K) any
+	Column   string
+}
+
+// NewFindBuilder creates a new FindBuilder function using the provided predicates.
+func NewFindBuilder[K comparable](predicates ...FindPredicate[K]) FindBuilder[K] {
 	return func(_ context.Context, tx *gorm.DB, key K) *gorm.DB {
-		return tx.Where(fmt.Sprintf("%s = ?", findColumn), key)
+		for _, p := range predicates {
+			tx = tx.Where(fmt.Sprintf("%s = ?", p.Column), p.Accessor(key))
+		}
+		return tx
 	}
 }

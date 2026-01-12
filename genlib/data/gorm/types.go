@@ -1,10 +1,17 @@
 package gorm
 
 import (
+	"reflect"
+
 	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/dave/jennifer/jen"
 	"github.com/gertd/go-pluralize"
 	"github.com/iancoleman/strcase"
+)
+
+const (
+	// BaseKeyId is the base key identifier used for accessing key fields.
+	BaseKeyId = "key" //nolint:revive // name is okay
 )
 
 // pl is an instance of pluralize.Client used for pluralizing and singularizing words in the application.
@@ -14,8 +21,9 @@ var (
 
 // Key represents a struct with a Name and Type, primarily used for defining key fields in code generation.
 type Key struct {
-	Name string
-	Type jen.Code
+	Accessor jen.Code
+	Type     jen.Code
+	Name     string
 }
 
 // JenHelper represents a helper structure for managing data objects with metadata, table names, and keys.
@@ -31,14 +39,29 @@ type JenHelper struct {
 func GetGormJenHelper(entry *data.Entry) JenHelper {
 	jh := entry.GetJenHelper()
 
-	keys := make([]Key, len(jh.KeyFields))
+	var keys []Key
 
-	for i, k := range jh.KeyFields {
+	t := jh.KeyField.Type
 
-		keys[i] = Key{
-			Name: strcase.ToSnake(k.Name),
-			Type: jen.Qual(k.PkgPath, k.Type.String()),
+	switch t.Kind() {
+	case reflect.Struct:
+		// We can only have one key per field from the key type
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			keys = append(keys, Key{
+				Accessor: jen.Id(BaseKeyId).Dot(f.Name),
+				Type:     jen.Qual(f.Type.PkgPath(), f.Type.Name()),
+				Name:     f.Name,
+			})
 		}
+	case reflect.Ptr:
+		panic("key can't be a pointer type")
+	default:
+		keys = append(keys, Key{
+			Accessor: jen.Id(BaseKeyId),
+			Type:     jen.Qual(t.PkgPath(), t.Name()),
+			Name:     jh.KeyField.Name,
+		})
 	}
 
 	tableName := pl.Plural(strcase.ToSnake(jh.StructName))

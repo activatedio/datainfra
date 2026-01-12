@@ -1,6 +1,7 @@
 package gorm
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 
@@ -24,7 +25,7 @@ type migrator struct {
 }
 
 // Migrate executes database migrations using the configuration and migration data defined in the migrator instance.
-func (m *migrator) Migrate() error {
+func (m *migrator) Migrate(_ context.Context) error {
 
 	gdb, err := datagorm.NewDB(m.config)
 

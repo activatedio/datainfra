@@ -4,8 +4,10 @@ type implementationGetterOptions struct {
 	filter func(any) bool
 }
 
+// ImplementationOption is a functional option for GetImplementation and GetImplementations
 type ImplementationOption[T any] func(*implementationGetterOptions)
 
+// WithTest allows filtering implementations based on a predicate
 func WithTest[T any](t func(in T)) ImplementationOption[T] {
 	return func(opts *implementationGetterOptions) {
 		opts.filter = func(in any) bool {
@@ -24,7 +26,7 @@ func GetImplementation[I any](e *Entry, opts ...ImplementationOption[I]) *I {
 	res := GetImplementations[I](e, opts...)
 
 	switch {
-	case res == nil || len(res) == 0:
+	case len(res) == 0:
 		return nil
 	case len(res) > 1:
 		panic("more than one implementation found")

@@ -32,3 +32,16 @@ type Theme struct {
 func (t *Theme) GetStringID() string {
 	return t.Name
 }
+
+// LocationKey represents a composite key for a Location entity.
+type LocationKey struct {
+	City  string `gorm:"primaryKey"`
+	State string `gorm:"primaryKey"`
+}
+
+// Location represents a physical location with a latitude and longitude.
+type Location struct {
+	LocationKey `data:"key"`
+	Latitude    float64
+	Longitude   float64
+}
