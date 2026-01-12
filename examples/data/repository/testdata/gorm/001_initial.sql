@@ -25,4 +25,8 @@ INSERT INTO themes2 (tenant_id, name, description) VALUES
   ('2', 'a', 'Category 2 A'),
   ('2', 'b', 'Category 2 B')
 ;
+INSERT INTO locations (city, state, latitude, longitude) VALUES
+  ('Seattle', 'WA', 1, 2),
+  ('San Francisco', 'CA', 3, 4)
+;
 

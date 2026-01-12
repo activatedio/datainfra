@@ -35,3 +35,10 @@ CREATE TABLE themes2 (
     PRIMARY KEY (tenant_id, name)
 );
 
+CREATE TABLE locations (
+    city VARCHAR(64),
+    state VARCHAR(64),
+    latitude REAL,
+    longitude REAL,
+    PRIMARY KEY (city, state)
+);

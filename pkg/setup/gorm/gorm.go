@@ -1,6 +1,7 @@
 package gorm
 
 import (
+	"context"
 	"fmt"
 
 	datagorm "github.com/activatedio/datainfra/pkg/data/gorm"
@@ -72,7 +73,7 @@ func (g *gormSetup) setupPostgres(params setup.Params) error {
 
 // Setup initializes the database based on the specified parameters and the configured dialect in ownerConfig.
 // Returns an error if the dialect is unsupported or if the setup process encounters an issue.
-func (g *gormSetup) Setup(params setup.Params) error {
+func (g *gormSetup) Setup(_ context.Context, params setup.Params) error {
 
 	switch g.ownerConfig.Dialect {
 	case "postgres":
@@ -104,7 +105,7 @@ func (g *gormSetup) teardownPostgres() error {
 }
 
 // Teardown cleans up resources based on the configured database dialect. Returns an error if the dialect is unknown.
-func (g *gormSetup) Teardown() error {
+func (g *gormSetup) Teardown(_ context.Context) error {
 
 	switch g.ownerConfig.Dialect {
 	case "postgres":

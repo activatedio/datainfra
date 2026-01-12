@@ -1,6 +1,7 @@
 package testing
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -49,19 +50,22 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 		var _err error
 
 		a.once.Do(func() {
+
+			ctx := context.Background()
+
 			if ip.Setup != nil {
 				log.Info().Msg("running setup")
-				if err := ip.Setup.Setup(setup.Params{FailOnExisting: true}); err != nil {
+				if err := ip.Setup.Setup(ctx, setup.Params{FailOnExisting: true}); err != nil {
 					_err = err
 					return
 				}
 				a.closer = func() error {
-					return ip.Setup.Teardown()
+					return ip.Setup.Teardown(ctx)
 				}
 			}
 
 			if ip.Migrator != nil {
-				if err := ip.Migrator.Migrate(); err != nil {
+				if err := ip.Migrator.Migrate(ctx); err != nil {
 					_err = err
 					return
 				}

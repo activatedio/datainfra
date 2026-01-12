@@ -18,6 +18,14 @@ func main() {
 
 	ds := []data.Entry{
 		{
+			Type: reflect.TypeFor[model.Location](),
+			Implementations: []any{
+				data.Crud{
+					Operations: data.OperationsCrud,
+				},
+			},
+		},
+		{
 			Type: reflect.TypeFor[model.Category](),
 			Implementations: []any{
 				data.Crud{

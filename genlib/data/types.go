@@ -16,17 +16,29 @@ type Entry struct {
 	Implementations []any
 }
 
-func buildKeys(target *[]reflect.StructField, t reflect.Type) {
+func getKey(t reflect.Type) *reflect.StructField {
+	var res *reflect.StructField
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		dt := ParseTag(f.Tag.Get("data"))
+
+		var tmp *reflect.StructField
+
 		if dt.IsKey {
-			*target = append(*target, f)
+			tmp = &f
+		} else if f.Anonymous && f.Type.Kind() == reflect.Struct {
+			tmp = getKey(f.Type)
 		}
-		if f.Anonymous && f.Type.Kind() == reflect.Struct {
-			buildKeys(target, f.Type)
+
+		if tmp != nil && res != nil {
+			panic("multiple key fields found for " + t.Name())
 		}
+		if tmp == nil {
+			continue
+		}
+		res = tmp
 	}
+	return res
 }
 
 // GetJenHelper generates a JenHelper object for the Entry, which includes interface and struct metadata and key field analysis.
@@ -38,31 +50,14 @@ func (e Entry) GetJenHelper() JenHelper {
 	}
 
 	res.StructType = jen.Qual(e.Type.PkgPath(), e.Type.Name())
+	res.KeyField = getKey(e.Type)
 
-	buildKeys(&res.KeyFields, e.Type)
+	if res.KeyField == nil {
+		panic("key field not set for " + e.Type.Name())
+	}
 
-	switch {
-	case len(res.KeyFields) == 0:
-		panic("key fields not set for " + e.Type.Name())
-	case len(res.KeyFields) == 1:
-		res.keyCodeGen = &fixedKeyCodeGenerator{
-			code: jen.Qual(res.KeyFields[0].Type.PkgPath(), res.KeyFields[0].Type.Name()),
-		}
-	case len(res.KeyFields) > 1:
-		keyTypeName := fmt.Sprintf("%sKey", e.Type.Name())
-		res.keyCodeGen = &localKeyCodeGenerator{
-			id: keyTypeName,
-		}
-
-		fs := &jen.Statement{}
-
-		fs.Add(jen.Commentf("%s is the key for %s", keyTypeName, e.Type.Name()))
-
-		for _, key := range res.KeyFields {
-			fs.Add(jen.Id(key.Name).Qual(key.Type.PkgPath(), key.Type.Name()))
-		}
-
-		res.keyStmt = jen.Type().Id(keyTypeName).Struct(*fs...)
+	res.keyCodeGen = func() jen.Code {
+		return jen.Qual(res.KeyField.Type.PkgPath(), res.KeyField.Type.Name())
 	}
 
 	return res
@@ -88,51 +83,21 @@ func ParseTag(tag string) Tag {
 	return t
 }
 
-// keyCodeGenerator defines behavior for generating key code based on import context and data interface.
-type keyCodeGenerator interface {
-	// Generate generates a key code based on the relative import of the data interface type. For a local generation
-	// this import will be blank.  The generator generates the code for the key, which may or may not use the
-	// provided interface type depending on if the key type is local or not
-	Generate(interfaceImport string) jen.Code
-}
-
-// fixedKeyCodeGenerator is a type responsible for generating fixed key codes using a predefined `jen.Code` instance.
-type fixedKeyCodeGenerator struct {
-	code jen.Code
-}
-
-// Generate returns a pre-defined jen.Code object associated with the fixedKeyCodeGenerator instance.
-func (f *fixedKeyCodeGenerator) Generate(_ string) jen.Code {
-	return f.code
-}
-
-// localKeyCodeGenerator generates code for a locally scoped key type with a specified identifier.
-type localKeyCodeGenerator struct {
-	id string
-}
-
-// Generate constructs a code representation of the identifier, optionally qualifying it with the given import path.
-func (l *localKeyCodeGenerator) Generate(interfaceImport string) jen.Code {
-	if interfaceImport == "" {
-		return jen.Id(l.id)
-	}
-	return jen.Qual(interfaceImport, l.id)
-}
-
 // JenHelper is a structure designed to aid in generating Go code and managing metadata for data objects.
 type JenHelper struct {
 	InterfaceName string
 	StructType    jen.Code
 	StructName    string
-	KeyFields     []reflect.StructField
-	keyCodeGen    keyCodeGenerator
-	keyStmt       *jen.Statement
+	// Can only have one key field
+	KeyField   *reflect.StructField
+	keyCodeGen func() jen.Code
+	keyStmt    *jen.Statement
 }
 
 // GenerateKeyCode generates a key code for the given interface import using the keyCodeGen generator field of JenHelper.
 // Returns a jen.Code instance representing the generated code for the provided interface import.
-func (g JenHelper) GenerateKeyCode(interfaceImport string) jen.Code {
-	return g.keyCodeGen.Generate(interfaceImport)
+func (g JenHelper) GenerateKeyCode() jen.Code {
+	return g.keyCodeGen()
 }
 
 // Operation represents a specific action or operation identified by a unique slug.

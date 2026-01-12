@@ -150,13 +150,13 @@ func addCrudHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 			case OperationFindByKey:
 				s.Add(jen.Id("FindByKey").Params(
 					QualCtx,
-					jh.GenerateKeyCode(""),
+					jh.GenerateKeyCode(),
 				).Params(
 					jen.Op("*").Add(jh.StructType),
 					IDError,
 				)).Add(jen.Id("ExistsByKey").Params(
 					QualCtx,
-					jh.GenerateKeyCode(""),
+					jh.GenerateKeyCode(),
 				).Params(
 					jen.Bool(),
 					IDError,
@@ -181,7 +181,7 @@ func addCrudHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 				))
 			case OperationDelete:
 				s.Add(jen.Id("Delete").Params(
-					QualCtx, jh.GenerateKeyCode("")).Params(
+					QualCtx, jh.GenerateKeyCode()).Params(
 					jen.Error(),
 				))
 				s.Add(jen.Id("DeleteEntity").Params(
@@ -238,9 +238,9 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 			jhc := _e.GetJenHelper()
 
-			ckc := jhc.GenerateKeyCode("")
+			ckc := jhc.GenerateKeyCode()
 
-			s.Add(jen.Id(fmt.Sprintf("Associate%s", Pl.Plural(jhc.StructName))).Params(jen.Id("ctx").Add(QualCtx), jen.Id("key").Add(jh.GenerateKeyCode("")), jen.Id("add").Index().Add(ckc), jen.Id("remove").Index().Add(ckc)).Params(jen.Error()))
+			s.Add(jen.Id(fmt.Sprintf("Associate%s", Pl.Plural(jhc.StructName))).Params(jen.Id("ctx").Add(QualCtx), jen.Id("key").Add(jh.GenerateKeyCode()), jen.Id("add").Index().Add(ckc), jen.Id("remove").Index().Add(ckc)).Params(jen.Error()))
 		}
 
 		return s
@@ -262,7 +262,7 @@ func addFilterKeysHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 		jh := i.Entry.GetJenHelper()
 
-		kc := jh.GenerateKeyCode("")
+		kc := jh.GenerateKeyCode()
 
 		return s.Add(
 			jen.Id("FilterKeys").Params(
@@ -294,7 +294,7 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 
 			jha := _e.GetJenHelper()
 
-			cka := jha.GenerateKeyCode("")
+			cka := jha.GenerateKeyCode()
 
 			s.Add(jen.Id(fmt.Sprintf("ListBy%s", jha.StructName)).Params(
 				jen.Id("ctx").Add(QualCtx),

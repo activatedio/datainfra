@@ -1,6 +1,7 @@
 package gorm_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -18,6 +19,8 @@ func TestSetup_Success(t *testing.T) {
 	type s struct {
 		arrange func() gorm.SetupParams
 	}
+
+	ctx := context.Background()
 
 	cases := map[string]s{
 		"default": {
@@ -55,31 +58,31 @@ func TestSetup_Success(t *testing.T) {
 
 			unit := gorm.NewSetup(v.arrange())
 
-			err := unit.Teardown()
+			err := unit.Teardown(ctx)
 
 			r.NoError(err)
 
-			err = unit.Setup(setup.Params{FailOnExisting: true})
+			err = unit.Setup(ctx, setup.Params{FailOnExisting: true})
 
 			r.NoError(err)
 
-			err = unit.Setup(setup.Params{FailOnExisting: false})
+			err = unit.Setup(ctx, setup.Params{FailOnExisting: false})
 
 			r.NoError(err)
 
-			err = unit.Setup(setup.Params{FailOnExisting: true})
+			err = unit.Setup(ctx, setup.Params{FailOnExisting: true})
 
 			r.ErrorAs(err, &setup.ResourceExistsError{})
 
-			err = unit.Teardown()
+			err = unit.Teardown(ctx)
 
 			r.NoError(err)
 
-			err = unit.Setup(setup.Params{FailOnExisting: true})
+			err = unit.Setup(ctx, setup.Params{FailOnExisting: true})
 
 			r.NoError(err)
 
-			err = unit.Teardown()
+			err = unit.Teardown(ctx)
 
 			r.NoError(err)
 

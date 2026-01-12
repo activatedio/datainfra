@@ -17,6 +17,16 @@ type Wrapper struct {
 	Dummy
 }
 
+type CompositeKey struct {
+	Key1 string
+	Key2 string
+}
+
+type WithComposite struct {
+	Key   CompositeKey `data:"key"`
+	Value string
+}
+
 func TestEntry_GetJenHelper(t *testing.T) {
 
 	cases := []struct {
@@ -34,7 +44,20 @@ func TestEntry_GetJenHelper(t *testing.T) {
 				assert.Equal(t, "Dummy", got.StructName)
 				assert.Equal(t, "DummyRepository", got.InterfaceName)
 				assert.Equal(t, jen.Qual(reflect.TypeFor[Dummy]().PkgPath(), reflect.TypeFor[Dummy]().Name()), got.StructType)
-				assert.Len(t, got.KeyFields, 1)
+				assert.NotNil(t, got.KeyField)
+			},
+		},
+		{
+			name: "composite key",
+			input: data.Entry{
+				Type: reflect.TypeFor[WithComposite](),
+			},
+			verify: func(got data.JenHelper) {
+
+				assert.Equal(t, "WithComposite", got.StructName)
+				assert.Equal(t, "WithCompositeRepository", got.InterfaceName)
+				assert.Equal(t, jen.Qual(reflect.TypeFor[WithComposite]().PkgPath(), reflect.TypeFor[WithComposite]().Name()), got.StructType)
+				assert.NotNil(t, got.KeyField)
 			},
 		},
 		{
@@ -47,7 +70,8 @@ func TestEntry_GetJenHelper(t *testing.T) {
 				assert.Equal(t, "Wrapper", got.StructName)
 				assert.Equal(t, "WrapperRepository", got.InterfaceName)
 				assert.Equal(t, jen.Qual(reflect.TypeFor[Wrapper]().PkgPath(), reflect.TypeFor[Wrapper]().Name()), got.StructType)
-				assert.Len(t, got.KeyFields, 1)
+				assert.NotNil(t, got.KeyField)
+
 			},
 		},
 	}
