@@ -41,7 +41,7 @@ type LocationKey struct {
 
 // Location represents a physical location with a latitude and longitude.
 type Location struct {
-	LocationKey `data:"key"`
-	Latitude    float64
-	Longitude   float64
+	Key       LocationKey `data:"key" gorm:"embedded" db:""`
+	Latitude  float64
+	Longitude float64
 }

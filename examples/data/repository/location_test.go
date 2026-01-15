@@ -24,10 +24,7 @@ func TestLocationRepository_Crud(t *testing.T) {
 					return &model.Location{}
 				},
 				ExtractKey: func(e *model.Location) model.LocationKey {
-					return model.LocationKey{
-						City:  e.City,
-						State: e.State,
-					}
+					return e.Key
 				},
 
 				AssertDetailEntry: func(_ *testing.T, e *model.Location) {
@@ -35,8 +32,7 @@ func TestLocationRepository_Crud(t *testing.T) {
 					a.NotEmpty(e.Longitude)
 				},
 				ModifyBeforeCreate: func(e *model.Location) {
-					e.City = uuid.New().String()
-					e.State = uuid.New().String()
+					e.Key = model.LocationKey{City: uuid.New().String(), State: uuid.New().String()}
 					e.Latitude = 1
 					e.Longitude = 1
 				},
