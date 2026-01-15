@@ -304,7 +304,7 @@ func addCrudHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 			for _, f := range jh.Keys {
 				fields.Add(jen.Qual(ImportThis, "FindPredicate").Types(jh.GenerateKeyCode()).Block(
-					jen.Id("Accessor").Op(":").Func().Params(jen.Id(BaseKeyId).Add(jh.GenerateKeyCode())).Params(jen.Any()).Block(
+					jen.Id("Accessor").Op(":").Func().Params(jen.Id(data.BaseKeyId).Add(jh.GenerateKeyCode())).Params(jen.Any()).Block(
 						jen.Return().Add(f.Accessor),
 					).Op(","),
 					jen.Id("Column").Op(":").Lit(strcase.ToSnake(f.Name)).Op(","),

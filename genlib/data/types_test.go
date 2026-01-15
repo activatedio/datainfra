@@ -45,6 +45,7 @@ func TestEntry_GetJenHelper(t *testing.T) {
 				assert.Equal(t, "DummyRepository", got.InterfaceName)
 				assert.Equal(t, jen.Qual(reflect.TypeFor[Dummy]().PkgPath(), reflect.TypeFor[Dummy]().Name()), got.StructType)
 				assert.NotNil(t, got.KeyField)
+				assert.Len(t, got.Keys, 1)
 			},
 		},
 		{
@@ -58,6 +59,7 @@ func TestEntry_GetJenHelper(t *testing.T) {
 				assert.Equal(t, "WithCompositeRepository", got.InterfaceName)
 				assert.Equal(t, jen.Qual(reflect.TypeFor[WithComposite]().PkgPath(), reflect.TypeFor[WithComposite]().Name()), got.StructType)
 				assert.NotNil(t, got.KeyField)
+				assert.Len(t, got.Keys, 2)
 			},
 		},
 		{
@@ -71,7 +73,7 @@ func TestEntry_GetJenHelper(t *testing.T) {
 				assert.Equal(t, "WrapperRepository", got.InterfaceName)
 				assert.Equal(t, jen.Qual(reflect.TypeFor[Wrapper]().PkgPath(), reflect.TypeFor[Wrapper]().Name()), got.StructType)
 				assert.NotNil(t, got.KeyField)
-
+				assert.Len(t, got.Keys, 1)
 			},
 		},
 	}

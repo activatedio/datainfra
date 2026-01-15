@@ -9,6 +9,11 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
+const (
+	// BaseKeyId is the base key identifier used for accessing key fields.
+	BaseKeyId = "key" //nolint:revive // name is okay
+)
+
 // Entry represents a data descriptor containing type metadata, supported operations, and implementation-specific details.
 type Entry struct {
 	Type reflect.Type
@@ -60,6 +65,33 @@ func (e Entry) GetJenHelper() JenHelper {
 		return jen.Qual(res.KeyField.Type.PkgPath(), res.KeyField.Type.Name())
 	}
 
+	var keys []Key
+
+	t := res.KeyField.Type
+
+	switch t.Kind() {
+	case reflect.Struct:
+		// We can only have one key per field from the key type
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			keys = append(keys, Key{
+				Accessor: jen.Id(BaseKeyId).Dot(f.Name),
+				Type:     jen.Qual(f.Type.PkgPath(), f.Type.Name()),
+				Name:     f.Name,
+			})
+		}
+	case reflect.Ptr:
+		panic("key can't be a pointer type")
+	default:
+		keys = append(keys, Key{
+			Accessor: jen.Id(BaseKeyId),
+			Type:     jen.Qual(t.PkgPath(), t.Name()),
+			Name:     res.KeyField.Name,
+		})
+	}
+
+	res.Keys = keys
+
 	return res
 }
 
@@ -83,6 +115,13 @@ func ParseTag(tag string) Tag {
 	return t
 }
 
+// Key represents a struct with a Name and Type, primarily used for defining key fields in code generation.
+type Key struct {
+	Accessor jen.Code
+	Type     jen.Code
+	Name     string
+}
+
 // JenHelper is a structure designed to aid in generating Go code and managing metadata for data objects.
 type JenHelper struct {
 	InterfaceName string
@@ -90,6 +129,7 @@ type JenHelper struct {
 	StructName    string
 	// Can only have one key field
 	KeyField   *reflect.StructField
+	Keys       []Key
 	keyCodeGen func() jen.Code
 	keyStmt    *jen.Statement
 }
