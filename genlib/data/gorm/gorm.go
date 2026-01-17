@@ -3,6 +3,7 @@ package gorm
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 
 	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/activatedio/gen"
@@ -96,6 +97,7 @@ type CrudTemplateParamsField struct{}
 
 // Associate contains gorm-specific options
 type Associate struct {
+	TargetType    reflect.Type
 	ExecuteRemove jen.Code
 	ExecuteAdd    jen.Code
 }
@@ -388,6 +390,7 @@ func addSearchHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint:gocyclo // higher complexity is okay for this
 
 	type helper struct {
+		targetType   reflect.Type
 		parentHelper JenHelper
 		childHelper  JenHelper
 	}
@@ -403,6 +406,7 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint
 			}
 
 			res = append(res, helper{
+				targetType:   e.Type,
 				parentHelper: GetGormJenHelper(e),
 				childHelper:  GetGormJenHelper(_e),
 			})
@@ -485,7 +489,9 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint
 				jen.Id("ChildRepository").Op(":").Add(receiverID()).Dot(fmt.Sprintf("%sRepository", strcase.ToLowerCamel(h.childHelper.StructName))).Op(","),
 			}
 
-			ai := data.GetImplementation[Associate](fm.Entry)
+			ai := data.GetImplementation[Associate](fm.Entry, data.WithTest[Associate](func(in Associate) {
+				in.TargetType = h.targetType
+			}))
 
 			if ai != nil {
 				if ai.ExecuteAdd != nil {
