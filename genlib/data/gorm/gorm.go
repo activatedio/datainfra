@@ -94,6 +94,12 @@ type TemplateFields struct{}
 // CrudTemplateParamsField is a type used to define parameters for CRUD template configurations within a registry or handler.
 type CrudTemplateParamsField struct{}
 
+// Associate contains gorm-specific options
+type Associate struct {
+	ExecuteRemove jen.Code
+	ExecuteAdd    jen.Code
+}
+
 // addBaseHandlers configures and registers default directory, file, and statement handlers in the provided HandlerEntries.
 func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
@@ -379,7 +385,7 @@ func addSearchHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 // addAssociateHandlers adds handlers to facilitate the management of associate relationships between data entities.
 // It updates the given HandlerEntries by registering statement and file handlers for entries with 'Associate' implementations.
 // Returns the updated HandlerEntries instance.
-func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
+func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint:gocyclo // higher complexity is okay for this
 
 	type helper struct {
 		parentHelper JenHelper
@@ -466,21 +472,36 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 				panic(fmt.Sprintf("Associate only supports a single key, found %d", len(h.childHelper.Keys)))
 			}
 
+			pFieldsStmt := &jen.Statement{
+				jen.Id("AssociationTable").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix, h.childHelper.TableName)).Op(","),
+				jen.Id("ParentColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix,
+					h.parentHelper.Keys[0].Name)).Op(","),
+				jen.Id("ChildColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.childHelper.TablePrefix,
+					h.childHelper.Keys[0].Name)).Op(","),
+				jen.Id("ParentKey").Op(":").Add(keyID()).Op(","),
+				jen.Id("Add").Op(":").Add(addID()).Op(","),
+				jen.Id("Remove").Op(":").Add(removeID()).Op(","),
+				jen.Id("ParentRepository").Op(":").Add(receiverID()).Op(","),
+				jen.Id("ChildRepository").Op(":").Add(receiverID()).Dot(fmt.Sprintf("%sRepository", strcase.ToLowerCamel(h.childHelper.StructName))).Op(","),
+			}
+
+			ai := data.GetImplementation[Associate](fm.Entry)
+
+			if ai != nil {
+				if ai.ExecuteAdd != nil {
+					pFieldsStmt.Add(jen.Id("ExecuteAdd").Op(":").Add(ai.ExecuteAdd).Op(","))
+				}
+				if ai.ExecuteRemove != nil {
+					pFieldsStmt.Add(jen.Id("ExecuteRemove").Op(":").Add(ai.ExecuteRemove).Op(","))
+				}
+			}
+
 			f.Func().Params(receiverID().Op("*").Id(implName)).Id(
 				fmt.Sprintf("Associate%s", pl.Plural(h.childHelper.StructName))).Params(ctxID().Add(data.QualCtx), keyID().Add(kc), addID().Index().Add(ckc), removeID().Index().Add(ckc)).
 				Params(jen.Error()).
 				Block(jen.Return(
 					jen.Qual(ImportThis, "Associate").Types(kc, ckc).Call(ctxID(), jen.Qual(ImportThis, "AssociateParams").Types(kc, ckc).Block(
-						jen.Id("AssociationTable").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix, h.childHelper.TableName)).Op(","),
-						jen.Id("ParentColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix,
-							h.parentHelper.Keys[0].Name)).Op(","),
-						jen.Id("ChildColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.childHelper.TablePrefix,
-							h.childHelper.Keys[0].Name)).Op(","),
-						jen.Id("ParentKey").Op(":").Add(keyID()).Op(","),
-						jen.Id("Add").Op(":").Add(addID()).Op(","),
-						jen.Id("Remove").Op(":").Add(removeID()).Op(","),
-						jen.Id("ParentRepository").Op(":").Add(receiverID()).Op(","),
-						jen.Id("ChildRepository").Op(":").Add(receiverID()).Dot(fmt.Sprintf("%sRepository", strcase.ToLowerCamel(h.childHelper.StructName))).Op(","),
+						*pFieldsStmt...,
 					)),
 				))
 		}
