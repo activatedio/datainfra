@@ -97,7 +97,7 @@ type CrudTemplateParamsField struct{}
 
 // Associate contains gorm-specific options
 type Associate struct {
-	TargetType    reflect.Type
+	ChildType     reflect.Type
 	ExecuteRemove jen.Code
 	ExecuteAdd    jen.Code
 }
@@ -490,7 +490,7 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint
 			}
 
 			ai := data.GetImplementation[Associate](fm.Entry, data.WithTest[Associate](func(in Associate) {
-				in.TargetType = h.targetType
+				in.ChildType = h.targetType
 			}))
 
 			if ai != nil {
