@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/activatedio/datainfra/pkg/data"
 	gorm2 "github.com/activatedio/datainfra/pkg/data/gorm"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
 	"github.com/activatedio/datainfra/pkg/migrate"
@@ -75,10 +76,21 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 		return _err
 	}, toInvoke)
 
+	var cp datatesting.ContextProvider
+
 	app := fxtest.New(t, a.opt,
-		fx.Provide(datatesting.NewContextProvider, gormsetup.NewSetup, gormmigrate.NewMigrator),
+		fx.Provide(func(contextBuilder data.ContextBuilder) datatesting.ContextProvider {
+			cp = NewContextProvider(contextBuilder)
+			return cp
+		}, gormsetup.NewSetup, gormmigrate.NewMigrator),
 		fx.Provide(provide...),
-		fx.Invoke(invoke...))
+		// This is the test itself
+		fx.Invoke(invoke...),
+		// This is the context cleanup
+		fx.Invoke(func() error {
+			return cp.AfterTest()
+		}),
+	)
 
 	return datatesting.AppFixtureResult{
 		App:  app,

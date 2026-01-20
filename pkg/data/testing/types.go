@@ -27,4 +27,5 @@ type AppFixture interface {
 // ContextProvider is an interface that provides a method to retrieve a context.Context instance.
 type ContextProvider interface {
 	GetContext() context.Context
+	AfterTest() error
 }
