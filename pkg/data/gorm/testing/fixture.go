@@ -80,7 +80,7 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 		fx.Provide(func(contextBuilder data.ContextBuilder, lc fx.Lifecycle) datatesting.ContextProvider {
 			cp := NewContextProvider(contextBuilder)
 			lc.Append(fx.Hook{
-				OnStop: func(ctx context.Context) error {
+				OnStop: func(_ context.Context) error {
 					return cp.AfterTest()
 				},
 			})
