@@ -76,20 +76,19 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 		return _err
 	}, toInvoke)
 
-	var cp datatesting.ContextProvider
-
 	app := fxtest.New(t, a.opt,
-		fx.Provide(func(contextBuilder data.ContextBuilder) datatesting.ContextProvider {
-			cp = NewContextProvider(contextBuilder)
+		fx.Provide(func(contextBuilder data.ContextBuilder, lc fx.Lifecycle) datatesting.ContextProvider {
+			cp := NewContextProvider(contextBuilder)
+			lc.Append(fx.Hook{
+				OnStop: func(ctx context.Context) error {
+					return cp.AfterTest()
+				},
+			})
 			return cp
 		}, gormsetup.NewSetup, gormmigrate.NewMigrator),
 		fx.Provide(provide...),
 		// This is the test itself
 		fx.Invoke(invoke...),
-		// This is the context cleanup
-		fx.Invoke(func() error {
-			return cp.AfterTest()
-		}),
 	)
 
 	return datatesting.AppFixtureResult{
