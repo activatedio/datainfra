@@ -10,4 +10,5 @@ type Config struct {
 	Username                 string
 	Password                 string
 	Name                     string
+	MaxIdleConns             *int
 }

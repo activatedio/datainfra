@@ -83,6 +83,8 @@ func TestMain(m *testing.M) {
 		postgresHost = "127.0.0.1"
 	}
 
+	zero := 0
+
 	AppFixtures = []datatesting.AppFixture{
 		gormtesting.NewAppFixture(DialectSqlite, fx.Module("testing", gorm.Index(),
 			fx.Provide(func() *ProfileMetadata {
@@ -114,6 +116,7 @@ func TestMain(m *testing.M) {
 				EnableDefaultTransaction: true,
 				EnableSQLLogging:         true,
 				Name:                     "postgres",
+				MaxIdleConns:             &zero,
 			}, &gorm2.Config{
 				Dialect:                  "postgres",
 				Host:                     postgresHost,
@@ -123,6 +126,7 @@ func TestMain(m *testing.M) {
 				Name:                     name,
 				Username:                 name,
 				Password:                 name,
+				MaxIdleConns:             &zero,
 			}, makeMigrations(DialectPostgres))))),
 	}
 

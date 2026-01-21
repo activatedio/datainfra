@@ -51,14 +51,19 @@ func NewDB(config *Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
+	var _db *sql.DB
+	_db, err = db.DB()
+	if err != nil {
+		return nil, err
+	}
+
+	if config.MaxIdleConns != nil {
+		_db.SetMaxIdleConns(*config.MaxIdleConns)
+	}
+
 	switch config.Dialect {
 	case DialectPostgres:
 	case DialectSqlite:
-		var _db *sql.DB
-		_db, err = db.DB()
-		if err != nil {
-			return nil, err
-		}
 		_db.SetMaxOpenConns(1)
 	default:
 		panic("unexpected dialect " + config.Dialect)
