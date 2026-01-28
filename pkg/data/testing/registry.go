@@ -107,7 +107,10 @@ func (r *AppFixtureRegistry[P]) GetFixtures(opts ...AppFixtureOption) []AppFixtu
 
 	var res []AppFixture
 
-	o := &AppFixtureOptions{}
+	o := &AppFixtureOptions{
+		// Our default filter is all
+		filter: func(p any) bool { return true },
+	}
 
 	for _, opt := range opts {
 		opt(o)
