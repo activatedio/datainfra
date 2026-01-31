@@ -10,6 +10,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/fx"
+	"go.uber.org/fx/fxtest"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -22,17 +24,67 @@ func RandomLabels() data.Labels {
 	}
 }
 
+type invoker struct {
+	f    reflect.Value
+	args []reflect.Type
+}
+
+func (i invoker) getArgs() []any {
+	res := make([]any, len(i.args))
+	for j, a := range i.args {
+		res[j] = reflect.New(a).Interface()
+	}
+	return res
+}
+
+func (i invoker) invoke(args []any) {
+	argValues := make([]reflect.Value, len(args))
+	for j, a := range args {
+		argValues[j] = reflect.ValueOf(a).Elem()
+	}
+	i.f.Call(argValues)
+}
+
+func newInvoker(invokeFunc any) invoker {
+	iv := reflect.ValueOf(invokeFunc)
+
+	if iv.Kind() != reflect.Func {
+		panic("toInvoke must be a function")
+	}
+
+	var args []reflect.Type
+
+	for i := 0; i < iv.Type().NumIn(); i++ {
+		args = append(args, iv.Type().In(i))
+	}
+
+	return invoker{iv, args}
+}
+
 // Run executes the given test cases using the list of AppFixture, invoking the provided functions and values.
 func Run(t *testing.T, fixtures []AppFixture, toInvoke any, toProvide ...any) {
 
 	for _, fix := range fixtures {
 
-		res := fix.GetApp(t, toInvoke, toProvide...)
+		res := fix.GetApp(toProvide...)
 
 		t.Run(res.Name, func(_ *testing.T) {
-			res.App.RequireStart()
 
-			res.App.RequireStop()
+			inv := newInvoker(toInvoke)
+			invokeArgs := inv.getArgs()
+			opts := []fx.Option{
+				res.App,
+				fx.Populate(invokeArgs...),
+			}
+
+			app := fxtest.New(t, opts...)
+
+			app.RequireStart()
+
+			// This is where our test needs to run
+			inv.invoke(invokeArgs)
+
+			app.RequireStop()
 		})
 
 	}

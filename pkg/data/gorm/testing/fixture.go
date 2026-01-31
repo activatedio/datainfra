@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"testing"
 
 	"github.com/activatedio/datainfra/pkg/data"
 	gorm2 "github.com/activatedio/datainfra/pkg/data/gorm"
@@ -15,7 +14,6 @@ import (
 	gormsetup "github.com/activatedio/datainfra/pkg/setup/gorm"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
-	"go.uber.org/fx/fxtest"
 )
 
 // appFixture is a struct that manages test application setup, state, and clean-up procedures for testing purposes.
@@ -42,7 +40,7 @@ type InvokeParams struct {
 }
 
 // GetApp initializes a test application instance with provided dependencies and invokes setup, returning a result object.
-func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatesting.AppFixtureResult {
+func (a *appFixture) GetApp(provide ...any) datatesting.AppFixtureResult {
 
 	var invoke []any
 
@@ -74,9 +72,9 @@ func (a *appFixture) GetApp(t *testing.T, toInvoke any, provide ...any) datatest
 		})
 
 		return _err
-	}, toInvoke)
+	})
 
-	app := fxtest.New(t, a.opt,
+	app := fx.Module("test", a.opt,
 		fx.Provide(func(contextBuilder data.ContextBuilder, lc fx.Lifecycle) datatesting.ContextProvider {
 			cp := NewContextProvider(contextBuilder)
 			lc.Append(fx.Hook{
