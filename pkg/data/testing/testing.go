@@ -66,7 +66,7 @@ func Run(t *testing.T, fixtures []AppFixture, toInvoke any, toProvide ...any) {
 
 	for _, fix := range fixtures {
 
-		res := fix.GetApp(toProvide...)
+		res := fix.GetApp(t, toProvide...)
 
 		t.Run(res.Name, func(_ *testing.T) {
 

@@ -2,6 +2,7 @@ package testing
 
 import (
 	"context"
+	"testing"
 
 	"go.uber.org/fx"
 )
@@ -20,7 +21,7 @@ type AppFixtureResult struct {
 type AppFixture interface {
 
 	// GetApp configures and retrieves an application fixture for testing based on provided dependencies and invocation.
-	GetApp(toProvide ...any) AppFixtureResult
+	GetApp(t *testing.T, toProvide ...any) AppFixtureResult
 
 	// Cleanup ensures proper teardown of resources associated with the fixture.
 	Cleanup() error

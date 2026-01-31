@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"testing"
 
 	"github.com/activatedio/datainfra/pkg/data"
 	gorm2 "github.com/activatedio/datainfra/pkg/data/gorm"
@@ -40,7 +41,7 @@ type InvokeParams struct {
 }
 
 // GetApp initializes a test application instance with provided dependencies and invokes setup, returning a result object.
-func (a *appFixture) GetApp(provide ...any) datatesting.AppFixtureResult {
+func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixtureResult {
 
 	var invoke []any
 
