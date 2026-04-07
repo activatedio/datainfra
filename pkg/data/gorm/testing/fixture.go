@@ -36,8 +36,9 @@ func (a *appFixture) Cleanup() error {
 // InvokeParams provides dependencies for invocation, including setup and migration components via fx.In.
 type InvokeParams struct {
 	fx.In
-	Setup    setup.Setup
-	Migrator migrate.Migrator
+	Setup       setup.Setup
+	Migrator    migrate.Migrator
+	SetupParams *setup.Params `optional:"true"`
 }
 
 // GetApp initializes a test application instance with provided dependencies and invokes setup, returning a result object.
@@ -47,6 +48,12 @@ func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixture
 
 	invoke = append(invoke, func(ip InvokeParams) error {
 
+		sp := setup.Params{FailOnExisting: true}
+
+		if ip.SetupParams != nil {
+			sp = *ip.SetupParams
+		}
+
 		var _err error
 
 		a.once.Do(func() {
@@ -55,7 +62,7 @@ func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixture
 
 			if ip.Setup != nil {
 				log.Info().Msg("running setup")
-				if err := ip.Setup.Setup(ctx, setup.Params{FailOnExisting: true}); err != nil {
+				if err := ip.Setup.Setup(ctx, sp); err != nil {
 					_err = err
 					return
 				}
