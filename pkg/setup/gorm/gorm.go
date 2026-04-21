@@ -3,6 +3,7 @@ package gorm
 import (
 	"context"
 	"fmt"
+	"time"
 
 	datagorm "github.com/activatedio/datainfra/pkg/data/gorm"
 	"github.com/activatedio/datainfra/pkg/setup"
@@ -75,15 +76,21 @@ func (g *gormSetup) setupPostgres(params setup.Params) error {
 // Returns an error if the dialect is unsupported or if the setup process encounters an issue.
 func (g *gormSetup) Setup(_ context.Context, params setup.Params) error {
 
+	start := time.Now()
+	var err error
+
 	switch g.ownerConfig.Dialect {
 	case "postgres":
-		return g.setupPostgres(params)
+		err = g.setupPostgres(params)
 	case "sqlite":
 		log.Info().Msg("no need to setup sqlite")
 		return nil
 	default:
 		return errors.Errorf("unknown Dialect %q", g.ownerConfig.Dialect)
 	}
+
+	log.Info().Str("component", "gorm").Str("dialect", g.ownerConfig.Dialect).Str("database", g.appConfig.Name).Dur("duration", time.Since(start)).Msg("db setup duration")
+	return err
 
 }
 
@@ -107,15 +114,21 @@ func (g *gormSetup) teardownPostgres() error {
 // Teardown cleans up resources based on the configured database dialect. Returns an error if the dialect is unknown.
 func (g *gormSetup) Teardown(_ context.Context) error {
 
+	start := time.Now()
+	var err error
+
 	switch g.ownerConfig.Dialect {
 	case "postgres":
-		return g.teardownPostgres()
+		err = g.teardownPostgres()
 	case "sqlite":
 		log.Info().Msg("no need to teardown sqlite")
 		return nil
 	default:
 		return errors.Errorf("unknown Dialect %q", g.ownerConfig.Dialect)
 	}
+
+	log.Info().Str("component", "gorm").Str("dialect", g.ownerConfig.Dialect).Str("database", g.appConfig.Name).Dur("duration", time.Since(start)).Msg("db teardown duration")
+	return err
 }
 
 // init initializes the database connection using the provided configuration and assigns it to the gormSetup instance.

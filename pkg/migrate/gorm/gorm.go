@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"time"
 
 	datagorm "github.com/activatedio/datainfra/pkg/data/gorm"
 	"github.com/activatedio/datainfra/pkg/migrate"
 	"github.com/pressly/goose/v3"
+	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
 )
 
@@ -81,9 +83,11 @@ func (m *migrator) Migrate(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("failed to create goose provider for %q: %w", d.Name, err)
 		}
+		migStart := time.Now()
 		if _, err = provider.Up(ctx); err != nil {
 			return fmt.Errorf("migration %q failed: %w", d.Name, err)
 		}
+		log.Info().Str("component", "gorm").Str("dialect", m.config.Dialect).Str("database", m.config.Name).Str("name", d.Name).Dur("duration", time.Since(migStart)).Msg("migration set complete")
 	}
 
 	return nil

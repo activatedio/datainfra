@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/activatedio/datainfra/pkg/data"
 	gorm2 "github.com/activatedio/datainfra/pkg/data/gorm"
@@ -62,20 +63,27 @@ func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixture
 
 			if ip.Setup != nil {
 				log.Info().Msg("running setup")
+				setupStart := time.Now()
 				if err := ip.Setup.Setup(ctx, sp); err != nil {
 					_err = err
 					return
 				}
+				log.Info().Str("component", "gorm").Str("fixture", a.name).Dur("duration", time.Since(setupStart)).Msg("setup complete")
 				a.closer = func() error {
-					return ip.Setup.Teardown(ctx)
+					teardownStart := time.Now()
+					err := ip.Setup.Teardown(ctx)
+					log.Info().Str("component", "gorm").Str("fixture", a.name).Dur("duration", time.Since(teardownStart)).Msg("teardown complete")
+					return err
 				}
 			}
 
 			if ip.Migrator != nil {
+				migrateStart := time.Now()
 				if err := ip.Migrator.Migrate(ctx); err != nil {
 					_err = err
 					return
 				}
+				log.Info().Str("component", "gorm").Str("fixture", a.name).Dur("duration", time.Since(migrateStart)).Msg("migration complete")
 			}
 		})
 
