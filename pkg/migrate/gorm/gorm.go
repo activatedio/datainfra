@@ -26,32 +26,29 @@ type migrator struct {
 	data   []MigratorData
 }
 
+var dialectMap = map[string]goose.Dialect{
+	"postgres":  goose.DialectPostgres,
+	"pgx":       goose.DialectPostgres,
+	"mysql":     goose.DialectMySQL,
+	"sqlite3":   goose.DialectSQLite3,
+	"sqlite":    goose.DialectSQLite3,
+	"mssql":     goose.DialectMSSQL,
+	"azuresql":  goose.DialectMSSQL,
+	"sqlserver": goose.DialectMSSQL,
+	"redshift":  goose.DialectRedshift,
+	"tidb":      goose.DialectTiDB,
+	"clickhouse": goose.DialectClickHouse,
+	"ydb":       goose.DialectYdB,
+	"turso":     goose.DialectTurso,
+	"starrocks": goose.DialectStarrocks,
+}
+
 // dialectFromString maps a dialect string to the goose Dialect constant.
 func dialectFromString(s string) (goose.Dialect, error) {
-	switch s {
-	case "postgres", "pgx":
-		return goose.DialectPostgres, nil
-	case "mysql":
-		return goose.DialectMySQL, nil
-	case "sqlite3", "sqlite":
-		return goose.DialectSQLite3, nil
-	case "mssql", "azuresql", "sqlserver":
-		return goose.DialectMSSQL, nil
-	case "redshift":
-		return goose.DialectRedshift, nil
-	case "tidb":
-		return goose.DialectTiDB, nil
-	case "clickhouse":
-		return goose.DialectClickHouse, nil
-	case "ydb":
-		return goose.DialectYdB, nil
-	case "turso":
-		return goose.DialectTurso, nil
-	case "starrocks":
-		return goose.DialectStarrocks, nil
-	default:
-		return "", fmt.Errorf("%q: unknown dialect", s)
+	if d, ok := dialectMap[s]; ok {
+		return d, nil
 	}
+	return "", fmt.Errorf("%q: unknown dialect", s)
 }
 
 // Migrate executes database migrations using the configuration and migration data defined in the migrator instance.

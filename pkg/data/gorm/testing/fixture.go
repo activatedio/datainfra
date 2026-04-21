@@ -45,7 +45,7 @@ type InvokeParams struct {
 // GetApp initializes a test application instance with provided dependencies and invokes setup, returning a result object.
 func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixtureResult {
 
-	var invoke []any
+	invoke := make([]any, 0, 1)
 
 	invoke = append(invoke, func(ip InvokeParams) error {
 

@@ -397,9 +397,10 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint
 
 	toHelper := func(e *data.Entry) []helper {
 
-		var res []helper
+		associates := data.GetImplementations[data.Associate](e)
+		res := make([]helper, 0, len(associates))
 
-		for _, a := range data.GetImplementations[data.Associate](e) {
+		for _, a := range associates {
 
 			_e := &data.Entry{
 				Type: a.ChildType,
