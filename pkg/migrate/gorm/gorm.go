@@ -27,20 +27,20 @@ type migrator struct {
 }
 
 var dialectMap = map[string]goose.Dialect{
-	"postgres":  goose.DialectPostgres,
-	"pgx":       goose.DialectPostgres,
-	"mysql":     goose.DialectMySQL,
-	"sqlite3":   goose.DialectSQLite3,
-	"sqlite":    goose.DialectSQLite3,
-	"mssql":     goose.DialectMSSQL,
-	"azuresql":  goose.DialectMSSQL,
-	"sqlserver": goose.DialectMSSQL,
-	"redshift":  goose.DialectRedshift,
-	"tidb":      goose.DialectTiDB,
+	"postgres":   goose.DialectPostgres,
+	"pgx":        goose.DialectPostgres,
+	"mysql":      goose.DialectMySQL,
+	"sqlite3":    goose.DialectSQLite3,
+	"sqlite":     goose.DialectSQLite3,
+	"mssql":      goose.DialectMSSQL,
+	"azuresql":   goose.DialectMSSQL,
+	"sqlserver":  goose.DialectMSSQL,
+	"redshift":   goose.DialectRedshift,
+	"tidb":       goose.DialectTiDB,
 	"clickhouse": goose.DialectClickHouse,
-	"ydb":       goose.DialectYdB,
-	"turso":     goose.DialectTurso,
-	"starrocks": goose.DialectStarrocks,
+	"ydb":        goose.DialectYdB,
+	"turso":      goose.DialectTurso,
+	"starrocks":  goose.DialectStarrocks,
 }
 
 // dialectFromString maps a dialect string to the goose Dialect constant.
