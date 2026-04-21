@@ -27,6 +27,7 @@ func RandomLabels() data.Labels {
 type invoker struct {
 	f    reflect.Value
 	args []reflect.Type
+	hasT bool // true when the first param of f is *testing.T
 }
 
 func (i invoker) getArgs() []any {
@@ -37,10 +38,13 @@ func (i invoker) getArgs() []any {
 	return res
 }
 
-func (i invoker) invoke(args []any) {
-	argValues := make([]reflect.Value, len(args))
-	for j, a := range args {
-		argValues[j] = reflect.ValueOf(a).Elem()
+func (i invoker) invoke(args []any, t *testing.T) {
+	argValues := make([]reflect.Value, 0, len(args)+1)
+	if i.hasT {
+		argValues = append(argValues, reflect.ValueOf(t))
+	}
+	for _, a := range args {
+		argValues = append(argValues, reflect.ValueOf(a).Elem())
 	}
 	i.f.Call(argValues)
 }
@@ -52,23 +56,33 @@ func newInvoker(invokeFunc any) invoker {
 		panic("toInvoke must be a function")
 	}
 
-	var args []reflect.Type
+	testingTType := reflect.TypeOf((*testing.T)(nil))
+	hasT := iv.Type().NumIn() > 0 && iv.Type().In(0) == testingTType
 
-	for i := 0; i < iv.Type().NumIn(); i++ {
+	start := 0
+	if hasT {
+		start = 1
+	}
+
+	var args []reflect.Type
+	for i := start; i < iv.Type().NumIn(); i++ {
 		args = append(args, iv.Type().In(i))
 	}
 
-	return invoker{iv, args}
+	return invoker{iv, args, hasT}
 }
 
 // Run executes the given test cases using the list of AppFixture, invoking the provided functions and values.
+// Each fixture runs as a parallel sub-test. If toInvoke's first parameter is *testing.T, the sub-test's t
+// is injected as that argument so assertions and sub-sub-tests are scoped to the right test node.
 func Run(t *testing.T, fixtures []AppFixture, toInvoke any, toProvide ...any) {
 
 	for _, fix := range fixtures {
 
 		res := fix.GetApp(t, toProvide...)
 
-		t.Run(res.Name, func(_ *testing.T) {
+		t.Run(res.Name, func(subt *testing.T) {
+			subt.Parallel()
 
 			inv := newInvoker(toInvoke)
 			invokeArgs := inv.getArgs()
@@ -77,12 +91,11 @@ func Run(t *testing.T, fixtures []AppFixture, toInvoke any, toProvide ...any) {
 				fx.Populate(invokeArgs...),
 			}
 
-			app := fxtest.New(t, opts...)
+			app := fxtest.New(subt, opts...)
 
 			app.RequireStart()
 
-			// This is where our test needs to run
-			inv.invoke(invokeArgs)
+			inv.invoke(invokeArgs, subt)
 
 			app.RequireStop()
 		})

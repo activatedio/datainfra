@@ -24,31 +24,65 @@ type migrator struct {
 	data   []MigratorData
 }
 
+// dialectFromString maps a dialect string to the goose Dialect constant.
+func dialectFromString(s string) (goose.Dialect, error) {
+	switch s {
+	case "postgres", "pgx":
+		return goose.DialectPostgres, nil
+	case "mysql":
+		return goose.DialectMySQL, nil
+	case "sqlite3", "sqlite":
+		return goose.DialectSQLite3, nil
+	case "mssql", "azuresql", "sqlserver":
+		return goose.DialectMSSQL, nil
+	case "redshift":
+		return goose.DialectRedshift, nil
+	case "tidb":
+		return goose.DialectTiDB, nil
+	case "clickhouse":
+		return goose.DialectClickHouse, nil
+	case "ydb":
+		return goose.DialectYdB, nil
+	case "turso":
+		return goose.DialectTurso, nil
+	case "starrocks":
+		return goose.DialectStarrocks, nil
+	default:
+		return "", fmt.Errorf("%q: unknown dialect", s)
+	}
+}
+
 // Migrate executes database migrations using the configuration and migration data defined in the migrator instance.
-func (m *migrator) Migrate(_ context.Context) error {
+func (m *migrator) Migrate(ctx context.Context) error {
 
 	gdb, err := datagorm.NewDB(m.config)
-
 	if err != nil {
 		return err
 	}
 
 	db, err := gdb.DB()
-
 	if err != nil {
 		return err
 	}
 
-	if err = goose.SetDialect(m.config.Dialect); err != nil {
+	dialect, err := dialectFromString(m.config.Dialect)
+	if err != nil {
 		return err
 	}
 
 	for _, d := range m.data {
-		goose.SetTableName(fmt.Sprintf("goose_migration_%s", d.Name))
-		goose.SetBaseFS(d.FS)
-		err = goose.Up(db, d.Path)
+		migFS, err := fs.Sub(d.FS, d.Path)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create sub-FS for path %q: %w", d.Path, err)
+		}
+		provider, err := goose.NewProvider(dialect, db, migFS,
+			goose.WithTableName(fmt.Sprintf("goose_migration_%s", d.Name)),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create goose provider for %q: %w", d.Name, err)
+		}
+		if _, err = provider.Up(ctx); err != nil {
+			return fmt.Errorf("migration %q failed: %w", d.Name, err)
 		}
 	}
 
