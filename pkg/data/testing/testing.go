@@ -72,26 +72,75 @@ func newInvoker(invokeFunc any) invoker {
 	return invoker{iv, args, hasT}
 }
 
+// RunOption configures behavior of Run.
+type RunOption func(*runConfig)
+
+type runConfig struct {
+	provide  []any
+	rootOpts []fx.Option
+	logger   fx.Option
+}
+
+// WithProvide supplies values to the test fx app's root scope.
+func WithProvide(provide ...any) RunOption {
+	return func(c *runConfig) {
+		c.provide = append(c.provide, provide...)
+	}
+}
+
+// WithRootOptions appends fx.Options at the root scope of the test app.
+// Use this for options other than the fx event logger — for the logger,
+// use WithLogger so it is applied after fxtest's auto-injected TB logger
+// and therefore takes effect.
+func WithRootOptions(opts ...fx.Option) RunOption {
+	return func(c *runConfig) {
+		c.rootOpts = append(c.rootOpts, opts...)
+	}
+}
+
+// WithLogger replaces the default fx event logger (fx.NopLogger) used by Run.
+// Pass an fx.Option that installs a logger, e.g. fx.WithLogger(...) or
+// fxtest.WithTestLogger(t), to route fx events somewhere visible during
+// debugging.
+func WithLogger(logger fx.Option) RunOption {
+	return func(c *runConfig) {
+		c.logger = logger
+	}
+}
+
 // Run executes the given test cases using the list of AppFixture, invoking the provided functions and values.
 // Each fixture runs as a parallel sub-test. If toInvoke's first parameter is *testing.T, the sub-test's t
 // is injected as that argument so assertions and sub-sub-tests are scoped to the right test node.
-func Run(t *testing.T, fixtures []AppFixture, toInvoke any, toProvide ...any) {
+//
+// By default fx event output is silenced via fx.NopLogger. Use WithLogger to override.
+func Run(t *testing.T, fixtures []AppFixture, toInvoke any, opts ...RunOption) {
+
+	cfg := &runConfig{
+		logger: fx.NopLogger,
+	}
+	for _, o := range opts {
+		o(cfg)
+	}
 
 	for _, fix := range fixtures {
 
-		res := fix.GetApp(t, toProvide...)
+		res := fix.GetApp(t, cfg.provide...)
 
 		t.Run(res.Name, func(subt *testing.T) {
 			subt.Parallel()
 
 			inv := newInvoker(toInvoke)
 			invokeArgs := inv.getArgs()
-			opts := []fx.Option{
+			fxOpts := []fx.Option{
 				res.App,
 				fx.Populate(invokeArgs...),
 			}
+			fxOpts = append(fxOpts, cfg.rootOpts...)
+			if cfg.logger != nil {
+				fxOpts = append(fxOpts, cfg.logger)
+			}
 
-			app := fxtest.New(subt, opts...)
+			app := fxtest.New(subt, fxOpts...)
 
 			app.RequireStart()
 
