@@ -10,39 +10,39 @@ import (
 
 var globalSuffixCounter atomic.Int64
 
-// AppFixtureLifecycle manages the lifecycle of application test fixtures, supporting eager and lazy initialization strategies.
+// AppFixtureLifecycle manages the lifecycle of application test fixtures, supporting shared and fresh retrieval strategies.
 type AppFixtureLifecycle struct {
-	once  *sync.Once
-	eager AppFixture
-	lazy  func(suffix string) AppFixture
+	once    *sync.Once
+	shared  AppFixture
+	factory func(suffix string) AppFixture
 }
 
-// NewAppFixtureLifecycle creates a new AppFixtureLifecycle instance using the provided factory for lazy initialization.
+// NewAppFixtureLifecycle creates a new AppFixtureLifecycle instance using the provided factory to produce fixtures on demand.
 func NewAppFixtureLifecycle(factory func(suffix string) AppFixture) *AppFixtureLifecycle {
 	return &AppFixtureLifecycle{
-		lazy: factory,
-		once: &sync.Once{},
+		factory: factory,
+		once:    &sync.Once{},
 	}
 }
 
 // Closer defines a function type responsible for releasing resources or performing cleanup operations, returning an error if any.
 type Closer func() error
 
-// GetEager retrieves or initializes the eager AppFixture instance and its corresponding Closer for resource cleanup.
-func (a *AppFixtureLifecycle) GetEager() (AppFixture, Closer) {
+// GetShared retrieves or initializes a shared AppFixture instance that is reused across calls, returning a Closer only on first creation.
+func (a *AppFixtureLifecycle) GetShared() (AppFixture, Closer) {
 
 	var cl Closer
 	a.once.Do(func() {
-		// Only return a closer if we got the instance from a lazy call
-		a.eager, cl = a.GetLazy()
+		// Only return a closer if we created the shared instance on this call
+		a.shared, cl = a.GetFresh()
 	})
 
-	return a.eager, cl
+	return a.shared, cl
 }
 
-// GetLazy creates a new AppFixture instance with a unique suffix and returns the fixture and its cleanup function.
-func (a *AppFixtureLifecycle) GetLazy() (AppFixture, Closer) {
-	f := a.lazy(a.makeSuffix())
+// GetFresh creates a new AppFixture instance with a unique suffix and returns the fixture and its cleanup function.
+func (a *AppFixtureLifecycle) GetFresh() (AppFixture, Closer) {
+	f := a.factory(a.makeSuffix())
 	return f, f.Cleanup
 }
 
@@ -52,19 +52,19 @@ func (a *AppFixtureLifecycle) makeSuffix() string {
 	return fmt.Sprintf("%d_%d_%d", time.Now().UnixMilli(), os.Getpid(), globalSuffixCounter.Add(1))
 }
 
-// AppFixtureOptions defines options for configuring app fixture behavior, including lazy loading and filtering profiles.
+// AppFixtureOptions defines options for configuring app fixture behavior, including fresh retrieval and filtering profiles.
 type AppFixtureOptions struct {
-	lazy   bool
+	fresh  bool
 	filter func(p any) bool
 }
 
 // AppFixtureOption represents a functional option for configuring AppFixtureOptions in a flexible and extensible manner.
 type AppFixtureOption func(a *AppFixtureOptions)
 
-// WithLazy returns an AppFixtureOption that enables lazy initialization for AppFixtureOptions.
-func WithLazy() AppFixtureOption {
+// WithFresh returns an AppFixtureOption that requests a freshly created fixture instance (new database/keyspace) rather than the shared one.
+func WithFresh() AppFixtureOption {
 	return func(a *AppFixtureOptions) {
-		a.lazy = true
+		a.fresh = true
 	}
 }
 
@@ -129,11 +129,11 @@ func (r *AppFixtureRegistry[P]) GetFixtures(opts ...AppFixtureOption) []AppFixtu
 			}
 			var f AppFixture
 			var cl Closer
-			if o.lazy {
-				f, cl = l.GetLazy()
+			if o.fresh {
+				f, cl = l.GetFresh()
 				res = append(res, f)
 			} else {
-				f, cl = l.GetEager()
+				f, cl = l.GetShared()
 				res = append(res, f)
 			}
 			if cl != nil {
