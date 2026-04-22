@@ -89,7 +89,7 @@ func (g *gormSetup) Setup(_ context.Context, params setup.Params) error {
 		return errors.Errorf("unknown Dialect %q", g.ownerConfig.Dialect)
 	}
 
-	log.Info().Str("component", "gorm").Str("dialect", g.ownerConfig.Dialect).Str("database", g.appConfig.Name).Dur("duration", time.Since(start)).Msg("db setup duration")
+	log.Info().Str("component", "gorm").Str("dialect", g.ownerConfig.Dialect).Str("database", g.appConfig.Name).Str("duration", time.Since(start).String()).Msg("db setup duration")
 	return err
 
 }
@@ -127,7 +127,7 @@ func (g *gormSetup) Teardown(_ context.Context) error {
 		return errors.Errorf("unknown Dialect %q", g.ownerConfig.Dialect)
 	}
 
-	log.Info().Str("component", "gorm").Str("dialect", g.ownerConfig.Dialect).Str("database", g.appConfig.Name).Dur("duration", time.Since(start)).Msg("db teardown duration")
+	log.Info().Str("component", "gorm").Str("dialect", g.ownerConfig.Dialect).Str("database", g.appConfig.Name).Str("duration", time.Since(start).String()).Msg("db teardown duration")
 	return err
 }
 

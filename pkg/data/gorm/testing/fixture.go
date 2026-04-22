@@ -20,10 +20,11 @@ import (
 
 // appFixture is a struct that manages test application setup, state, and clean-up procedures for testing purposes.
 type appFixture struct {
-	once   sync.Once
-	closer func() error
-	name   string
-	opt    fx.Option
+	once     sync.Once
+	setupErr error
+	closer   func() error
+	name     string
+	opt      fx.Option
 }
 
 // Cleanup releases resources associated with the appFixture by invoking the closer function, if it is not nil.
@@ -55,8 +56,6 @@ func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixture
 			sp = *ip.SetupParams
 		}
 
-		var _err error
-
 		a.once.Do(func() {
 
 			ctx := context.Background()
@@ -65,14 +64,14 @@ func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixture
 				log.Info().Msg("running setup")
 				setupStart := time.Now()
 				if err := ip.Setup.Setup(ctx, sp); err != nil {
-					_err = err
+					a.setupErr = err
 					return
 				}
-				log.Info().Str("component", "gorm").Str("fixture", a.name).Dur("duration", time.Since(setupStart)).Msg("setup complete")
+				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(setupStart).String()).Msg("setup complete")
 				a.closer = func() error {
 					teardownStart := time.Now()
 					err := ip.Setup.Teardown(ctx)
-					log.Info().Str("component", "gorm").Str("fixture", a.name).Dur("duration", time.Since(teardownStart)).Msg("teardown complete")
+					log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(teardownStart).String()).Msg("teardown complete")
 					return err
 				}
 			}
@@ -80,14 +79,14 @@ func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixture
 			if ip.Migrator != nil {
 				migrateStart := time.Now()
 				if err := ip.Migrator.Migrate(ctx); err != nil {
-					_err = err
+					a.setupErr = err
 					return
 				}
-				log.Info().Str("component", "gorm").Str("fixture", a.name).Dur("duration", time.Since(migrateStart)).Msg("migration complete")
+				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(migrateStart).String()).Msg("migration complete")
 			}
 		})
 
-		return _err
+		return a.setupErr
 	})
 
 	app := fx.Module("test", a.opt,

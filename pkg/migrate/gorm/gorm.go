@@ -84,7 +84,7 @@ func (m *migrator) Migrate(ctx context.Context) error {
 		if _, err = provider.Up(ctx); err != nil {
 			return fmt.Errorf("migration %q failed: %w", d.Name, err)
 		}
-		log.Info().Str("component", "gorm").Str("dialect", m.config.Dialect).Str("database", m.config.Name).Str("name", d.Name).Dur("duration", time.Since(migStart)).Msg("migration set complete")
+		log.Info().Str("component", "gorm").Str("dialect", m.config.Dialect).Str("database", m.config.Name).Str("name", d.Name).Str("duration", time.Since(migStart).String()).Msg("migration set complete")
 	}
 
 	return nil

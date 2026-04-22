@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+var globalSuffixCounter atomic.Int64
 
 // AppFixtureLifecycle manages the lifecycle of application test fixtures, supporting eager and lazy initialization strategies.
 type AppFixtureLifecycle struct {
@@ -43,9 +46,10 @@ func (a *AppFixtureLifecycle) GetLazy() (AppFixture, Closer) {
 	return f, f.Cleanup
 }
 
-// makeSuffix generates a unique suffix string based on the current timestamp in milliseconds and the process ID.
+// makeSuffix generates a unique suffix string based on the current timestamp in milliseconds, the process ID,
+// and a monotonically increasing counter to prevent collisions when multiple fixtures are created within the same millisecond.
 func (a *AppFixtureLifecycle) makeSuffix() string {
-	return fmt.Sprintf("%d_%d", time.Now().UnixMilli(), os.Getpid())
+	return fmt.Sprintf("%d_%d_%d", time.Now().UnixMilli(), os.Getpid(), globalSuffixCounter.Add(1))
 }
 
 // AppFixtureOptions defines options for configuring app fixture behavior, including lazy loading and filtering profiles.
