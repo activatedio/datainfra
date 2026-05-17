@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/activatedio/gen"
 	"github.com/dave/jennifer/jen"
 	"github.com/iancoleman/strcase"
+
+	"github.com/activatedio/datainfra/genlib/data"
 )
 
 // ImportThis defines the import path for the gorm package utilized by the data infrastructure library.
@@ -19,31 +20,25 @@ var (
 // DirectoryMain represents a configuration for generating files and directories containing code based on supplied entries.
 // Package defines the package name for generated files.
 // InterfaceImport specifies the import path of the interfaces used by the entries.
-// GenerateIndex determines whether an index file should be generated.
-// IndexModule defines the name of the fx module for the generated index.
+// Wiring controls how generated constructors integrate with a DI framework
+// (e.g. fx). Nil emits plain constructors with no framework imports and skips
+// the index file. See data.Wiring.
 // Entries is a collection of data Entry objects to process and use for code generation.
 type DirectoryMain struct {
 	Package         string
 	InterfaceImport string
-	GenerateIndex   bool
-	IndexModule     string
+	Wiring          data.Wiring
 	Entries         []data.Entry
-}
-
-// IndexMain represents a collection of entries grouped under an index module, primarily used for fx module generation.
-// IndexModule refers to the module name used for fx injection.
-// Entries contains a list of data.Entry elements to be processed.
-type IndexMain struct {
-	IndexModule string
-	Entries     []data.Entry
 }
 
 // FileMain serves as a descriptor to facilitate code generation for a specific type using metadata from a data.Entry.
 // Entry holds type-specific metadata and related operations for code generation.
 // InterfaceImport specifies the import path for the target interface in the generated code.
+// Wiring controls DI integration for the generated constructor; see DirectoryMain.
 type FileMain struct {
 	Entry           *data.Entry
 	InterfaceImport string
+	Wiring          data.Wiring
 }
 
 // InternalSuperFields is a struct that contains a reference to a data.Entry, used for managing type-specific metadata.
@@ -114,40 +109,24 @@ func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 				r.RunFileHandler(file, &FileMain{
 					InterfaceImport: m.InterfaceImport,
 					Entry:           &e,
+					Wiring:          m.Wiring,
 				})
 			})
 		}
 
-		if m.GenerateIndex {
+		if m.Wiring != nil {
+			provideRefs := make([]jen.Code, 0, 2+len(m.Entries))
+			provideRefs = append(provideRefs,
+				jen.Qual(ImportThis, "NewDB"),
+				jen.Qual(ImportThis, "NewContextBuilder"),
+			)
+			for _, e := range m.Entries {
+				provideRefs = append(provideRefs, jen.Id(fmt.Sprintf("New%sRepository", e.Type.Name())))
+			}
 			gen.WithFile(m.Package, filepath.Join(dirPath, "index_gen.go"), func(file *jen.File) {
-				r.RunFileHandler(file, &IndexMain{
-					IndexModule: m.IndexModule,
-					Entries:     m.Entries,
-				})
+				m.Wiring.EmitIndex(file, provideRefs)
 			})
 		}
-
-	}).AddFileHandler(gen.NewKey[*IndexMain](), func(f *jen.File, _ gen.Registry, entry any) {
-
-		im := entry.(*IndexMain)
-
-		opts := &jen.Statement{}
-
-		opts.Add(
-			jen.Qual(ImportThis, "NewDB"),
-			jen.Qual(ImportThis, "NewContextBuilder"),
-		)
-
-		for _, d := range im.Entries {
-			opts = opts.Add(jen.Id(fmt.Sprintf("New%sRepository", d.Type.Name())))
-		}
-
-		f.Commentf("Index collects constructors for implementations in an fx module")
-		f.Func().Id("Index").Params().Params(jen.Qual(data.ImportFX, "Option")).Block(
-			jen.Return(jen.Qual(data.ImportFX, "Module")).Call(
-				jen.Lit(im.IndexModule), jen.Qual(data.ImportFX, "Provide").Call(*opts...),
-			),
-		)
 
 	}).AddFileHandler(gen.NewKey[*FileMain](), func(f *jen.File, r gen.Registry, entry any) {
 
@@ -183,8 +162,10 @@ func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 		paramsType := fmt.Sprintf("%sRepositoryParams", jh.StructName)
 
 		cpfStmt := &jen.Statement{}
-		// TODO - Add in FX decorators
-		cpfStmt.Add(jen.Qual(data.ImportFX, "In"))
+		if fm.Wiring != nil {
+			cpfStmt.Add(fm.Wiring.PrependCtorParamsFields()...)
+		}
+		prefixLen := len(*cpfStmt)
 		cpfStmt.Add(*r.BuildStatement(&jen.Statement{}, &CtorParamsFields{
 			Entry:           d,
 			InterfaceImport: fm.InterfaceImport,
@@ -207,7 +188,7 @@ func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 		paramsID := "params"
 
-		if len(*cpfStmt) == 1 {
+		if len(*cpfStmt) == prefixLen {
 			paramsID = ""
 		}
 
@@ -480,9 +461,9 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint
 			pFieldsStmt := &jen.Statement{
 				jen.Id("AssociationTable").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix, h.childHelper.TableName)).Op(","),
 				jen.Id("ParentColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.parentHelper.TablePrefix,
-					h.parentHelper.Keys[0].Name)).Op(","),
+					strcase.ToSnake(h.parentHelper.Keys[0].Name))).Op(","),
 				jen.Id("ChildColumnName").Op(":").Lit(fmt.Sprintf("%s_%s", h.childHelper.TablePrefix,
-					h.childHelper.Keys[0].Name)).Op(","),
+					strcase.ToSnake(h.childHelper.Keys[0].Name))).Op(","),
 				jen.Id("ParentKey").Op(":").Add(keyID()).Op(","),
 				jen.Id("Add").Op(":").Add(addID()).Op(","),
 				jen.Id("Remove").Op(":").Add(removeID()).Op(","),
@@ -551,7 +532,7 @@ func addFilterKeysHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 			Params(jen.Qual(ImportThis, "MappingFilterKeysTemplateImplOptions").Types(*typs...).
 				Block(
 					jen.Id("Template").Op(":").Id("template").Op(","),
-					jen.Id("FindColumn").Op(":").Lit(jh.Keys[0].Name).Op(","),
+					jen.Id("FindColumn").Op(":").Lit(strcase.ToSnake(jh.Keys[0].Name)).Op(","),
 				)).Op(","))
 
 	})
@@ -599,8 +580,8 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 			} else {
 				assocatedTable = fmt.Sprintf("%s_%s", jha.TablePrefix, jh.TableName)
 			}
-			thisAssocatedKey := fmt.Sprintf("%s_%s", jh.TablePrefix, jh.Keys[0].Name)
-			otherAssocatedKey := fmt.Sprintf("%s_%s", jha.TablePrefix, jha.Keys[0].Name)
+			thisAssocatedKey := fmt.Sprintf("%s_%s", jh.TablePrefix, strcase.ToSnake(jh.Keys[0].Name))
+			otherAssocatedKey := fmt.Sprintf("%s_%s", jha.TablePrefix, strcase.ToSnake(jha.Keys[0].Name))
 
 			f.Func().Params(receiverID().Op("*").Id(implName)).Id(fmt.Sprintf("ListBy%s", jha.StructName)).Params(
 				jen.Id(ctxName).Add(data.QualCtx),
@@ -622,7 +603,7 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 								assocatedTable,
 								thisAssocatedKey,
 								thisTable,
-								jh.Keys[0].Name,
+								strcase.ToSnake(jh.Keys[0].Name),
 							),
 						)).
 							Dot("Where").Call(jen.Lit(

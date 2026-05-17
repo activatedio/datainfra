@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -13,6 +12,8 @@ import (
 	"go.uber.org/fx"
 	"go.uber.org/fx/fxtest"
 	"k8s.io/apimachinery/pkg/labels"
+
+	"github.com/activatedio/datainfra/pkg/data"
 )
 
 // RandomLabels generates and returns a set of random label key-value pairs with unique UUID values for each key.
@@ -221,10 +222,18 @@ func DoTestCrud[E any, K comparable](t *testing.T,
 	require.NoError(t, err)
 	assert.Nil(t, got)
 
+	exists, err := unit.ExistsByKey(ctx, fixture.KeyMissing)
+	require.NoError(t, err)
+	assert.False(t, exists, "ExistsByKey(KeyMissing) must be false")
+
 	got, err = unit.FindByKey(ctx, fixture.KeyExists)
 
 	require.NoError(t, err)
 	assert.NotNil(t, got)
+
+	exists, err = unit.ExistsByKey(ctx, fixture.KeyExists)
+	require.NoError(t, err)
+	assert.True(t, exists, "ExistsByKey(KeyExists) must be true")
 
 	fixture.AssertDetailEntry(t, got)
 

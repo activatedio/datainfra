@@ -4,9 +4,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/dave/jennifer/jen"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/activatedio/datainfra/genlib/data"
 )
 
 type Dummy struct {

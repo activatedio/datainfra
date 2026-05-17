@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog/log"
+	"go.uber.org/fx"
+
 	"github.com/activatedio/datainfra/pkg/data"
 	gorm2 "github.com/activatedio/datainfra/pkg/data/gorm"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
@@ -14,8 +17,6 @@ import (
 	gormmigrate "github.com/activatedio/datainfra/pkg/migrate/gorm"
 	"github.com/activatedio/datainfra/pkg/setup"
 	gormsetup "github.com/activatedio/datainfra/pkg/setup/gorm"
-	"github.com/rs/zerolog/log"
-	"go.uber.org/fx"
 )
 
 // appFixture is a struct that manages test application setup, state, and clean-up procedures for testing purposes.

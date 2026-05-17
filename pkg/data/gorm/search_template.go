@@ -3,9 +3,10 @@ package gorm
 import (
 	"context"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
+
+	"github.com/activatedio/datainfra/pkg/data"
 )
 
 type searchTemplateImpl[E any, I any] struct {

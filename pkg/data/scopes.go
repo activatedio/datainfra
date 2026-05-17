@@ -1,7 +1,5 @@
 package data
 
-import "context"
-
 // FetchType represents a type of fetch operation, used to influence context-specific behaviors or query logic.
 type FetchType string
 
@@ -25,7 +23,10 @@ type NoneScopeTemplate interface {
 	ScopeTemplate[*RootInfo]
 }
 
-// MustGetRootInfo retrieves the RootInfo object from the provided context, representing no constraining scope.
-func MustGetRootInfo(_ context.Context) *RootInfo {
+// MustGetRootInfo returns the canonical RootInfo value representing no
+// constraining scope. The name preserves the historical signature; the
+// function does not actually panic and takes no context, since RootInfo
+// carries no per-call state.
+func MustGetRootInfo() *RootInfo {
 	return &RootInfo{}
 }

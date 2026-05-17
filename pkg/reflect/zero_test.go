@@ -3,8 +3,9 @@ package reflect_test
 import (
 	"testing"
 
-	"github.com/activatedio/datainfra/pkg/reflect"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/activatedio/datainfra/pkg/reflect"
 )
 
 type Dummy struct{}

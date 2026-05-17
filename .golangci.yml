@@ -120,7 +120,7 @@ linters:
     paths:
       - third_party$
       - builtin$
-      - examples$
+      - ^examples/
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
@@ -134,8 +134,7 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/crossplane)
-        - prefix(github.com/crossplane-contrib)
+        - prefix(github.com/activatedio/datainfra)
         - blank
         - dot
       custom-order: true
@@ -146,4 +145,4 @@ formatters:
     paths:
       - third_party$
       - builtin$
-      - examples$
+      - ^examples/

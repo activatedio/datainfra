@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	datagorm "github.com/activatedio/datainfra/pkg/data/gorm"
 	"github.com/activatedio/datainfra/pkg/setup"
 	"github.com/activatedio/datainfra/pkg/setup/gorm"
-	"github.com/stretchr/testify/require"
 )
 
 func TestSetup_Success(t *testing.T) {

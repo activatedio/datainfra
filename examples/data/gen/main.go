@@ -4,12 +4,13 @@ package main
 import (
 	"reflect"
 
+	"github.com/activatedio/gen"
+	"github.com/dave/jennifer/jen"
+
 	"github.com/activatedio/datainfra/examples/data/model"
 	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/activatedio/datainfra/genlib/data/gorm"
 	data2 "github.com/activatedio/datainfra/pkg/data"
-	"github.com/activatedio/gen"
-	"github.com/dave/jennifer/jen"
 )
 
 //go:generate go run .
@@ -107,8 +108,7 @@ func main() {
 		InterfaceImport: "github.com/activatedio/datainfra/examples/data/repository",
 		Package:         "gorm",
 		Entries:         ds,
-		GenerateIndex:   true,
-		IndexModule:     "example.data.gorm",
+		Wiring:          data.FXWiring("example.data.gorm"),
 	})
 
 }

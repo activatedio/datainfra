@@ -3,8 +3,9 @@ package gorm
 import (
 	"context"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	"gorm.io/gorm"
+
+	"github.com/activatedio/datainfra/pkg/data"
 )
 
 // ContextScope defines a mechanism to apply scoped queries and inject contextual values into entities.

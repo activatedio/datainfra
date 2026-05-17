@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/activatedio/datainfra/examples/data/model"
 	"github.com/activatedio/datainfra/examples/data/repository"
 	"github.com/activatedio/datainfra/pkg/data"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestProductRepository_Search(t *testing.T) {

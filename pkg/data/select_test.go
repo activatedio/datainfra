@@ -3,10 +3,11 @@ package data_test
 import (
 	"testing"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/labels"
+
+	"github.com/activatedio/datainfra/pkg/data"
 )
 
 type Dummy struct {

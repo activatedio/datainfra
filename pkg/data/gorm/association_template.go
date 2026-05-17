@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/pkg/errors"
 	"gorm.io/gorm"
+
+	"github.com/activatedio/datainfra/pkg/data"
 )
 
 // AssociateParams is a generic type used to manage associations between a parent entity and child entities in a database.
@@ -42,7 +43,10 @@ func Associate[PK comparable, CK comparable](ctx context.Context, params Associa
 		return err
 	}
 
-	tx := GetDB(ctx)
+	tx, err := GetDB(ctx)
+	if err != nil {
+		return err
+	}
 
 	if isNotEmpty(filteredRemove) {
 		if err := executeRemove(ctx, tx, params, filteredRemove); err != nil {

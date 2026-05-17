@@ -6,12 +6,13 @@ import (
 	"testing"
 	"text/template"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	corefs "github.com/activatedio/datainfra/pkg/data/fs"
 	"github.com/activatedio/datainfra/pkg/data/fs/testdata/simple1"
 	"github.com/activatedio/datainfra/pkg/data/fs/testdata/subdirs1"
 	"github.com/activatedio/datainfra/pkg/symbols"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type Dummy struct {

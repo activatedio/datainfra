@@ -1,10 +1,11 @@
 package gorm
 
 import (
-	"github.com/activatedio/datainfra/genlib/data"
 	"github.com/dave/jennifer/jen"
 	"github.com/gertd/go-pluralize"
 	"github.com/iancoleman/strcase"
+
+	"github.com/activatedio/datainfra/genlib/data"
 )
 
 // pl is an instance of pluralize.Client used for pluralizing and singularizing words in the application.

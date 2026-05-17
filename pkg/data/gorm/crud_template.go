@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/activatedio/datainfra/pkg/data"
 )
 
 // FindBuilder defines a function type for building queries to find entities in the database based on a given key.
@@ -71,12 +72,18 @@ func (c *crudTemplateImpl[E, I, K]) FindByKey(ctx context.Context, key K) (E, er
 // ExistsByKey checks if an entity with the specified key exists in the database and returns a boolean result with an error.
 func (c *crudTemplateImpl[E, I, K]) ExistsByKey(ctx context.Context, key K) (bool, error) {
 
-	var got any
-	var err error
+	db, err := GetDB(ctx)
+	if err != nil {
+		return false, err
+	}
+	db = db.Table(c.template.GetTable())
+	db = c.template.ApplyContextScopeQueryBuilder(ctx, db, data.FetchTypeDetail)
 
-	got, err = c.FindByKey(ctx, key)
-
-	return got != nil, err
+	var count int64
+	if err := c.findBuilder(ctx, db, key).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // List retrieves a paginated list of entities of type E based on the provided filter and pagination parameters.
@@ -96,7 +103,11 @@ func (c *crudTemplateImpl[E, I, K]) Create(ctx context.Context, entity E) error 
 	internal := c.template.ToInternal(entity)
 	c.template.ApplyContextScopeValueInjector(ctx, internal, data.FetchTypeNone)
 
-	tx := GetDB(ctx).Table(c.template.GetTable()).Clauses(clause.OnConflict{DoNothing: true}).Create(internal)
+	db, err := GetDB(ctx)
+	if err != nil {
+		return err
+	}
+	tx := db.Table(c.template.GetTable()).Clauses(clause.OnConflict{DoNothing: true}).Create(internal)
 
 	switch {
 	case tx.Error != nil:
@@ -114,12 +125,20 @@ func (c *crudTemplateImpl[E, I, K]) Update(ctx context.Context, entity E) error 
 	internal := c.template.ToInternal(entity)
 	c.template.ApplyContextScopeValueInjector(ctx, internal, data.FetchTypeNone)
 
-	return GetDB(ctx).Table(c.template.GetTable()).Save(internal).Error
+	db, err := GetDB(ctx)
+	if err != nil {
+		return err
+	}
+	return db.Table(c.template.GetTable()).Save(internal).Error
 }
 
 // Delete removes an entity of type E from the database based on the provided key K, using the findBuilder logic.
 func (c *crudTemplateImpl[E, I, K]) Delete(ctx context.Context, key K) error {
-	db := GetDB(ctx).Table(c.template.GetTable())
+	db, err := GetDB(ctx)
+	if err != nil {
+		return err
+	}
+	db = db.Table(c.template.GetTable())
 	return c.findBuilder(ctx, db, key).Delete(new(E)).Error
 }
 
@@ -127,7 +146,11 @@ func (c *crudTemplateImpl[E, I, K]) Delete(ctx context.Context, key K) error {
 func (c *crudTemplateImpl[E, I, K]) DeleteEntity(ctx context.Context, entity E) error {
 	// TODO - need to validate access
 	// TODO - unit test
-	return GetDB(ctx).Table(c.template.GetTable()).Delete(entity).Error
+	db, err := GetDB(ctx)
+	if err != nil {
+		return err
+	}
+	return db.Table(c.template.GetTable()).Delete(entity).Error
 }
 
 // FindPredicate defines a predicate for finding entities based on a column and accessor function.

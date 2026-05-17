@@ -26,7 +26,10 @@ func (c *contextProvider) GetContext() context.Context {
 // AfterTest closes the database connection.
 func (c *contextProvider) AfterTest() error {
 	if c.ctx != nil {
-		db := gorm.GetDB(c.ctx)
+		db, err := gorm.GetDB(c.ctx)
+		if err != nil {
+			return err
+		}
 		_db, err := db.DB()
 		if err != nil {
 			return err

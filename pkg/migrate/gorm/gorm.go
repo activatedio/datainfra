@@ -6,11 +6,12 @@ import (
 	"io/fs"
 	"time"
 
-	datagorm "github.com/activatedio/datainfra/pkg/data/gorm"
-	"github.com/activatedio/datainfra/pkg/migrate"
 	"github.com/pressly/goose/v3"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
+
+	datagorm "github.com/activatedio/datainfra/pkg/data/gorm"
+	"github.com/activatedio/datainfra/pkg/migrate"
 )
 
 // MigratorData represents a migration configuration including its name, file system, and relative path.

@@ -32,7 +32,11 @@ func NewMappingFilterKeysTemplate[E any, I any, K comparable](options MappingFil
 func (c *filterKeysTemplateImpl[E, I, K]) FilterKeys(ctx context.Context, keys []K) ([]K, error) {
 
 	// TODO - we may want to move this into the Template
-	tx := GetDB(ctx).Table(c.template.GetTable())
+	db, err := GetDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tx := db.Table(c.template.GetTable())
 	tx = c.template.ApplyContextScopeQueryBuilder(ctx, tx, data.FetchTypeKeys)
 
 	tx.Select(c.findColumn).Where(fmt.Sprintf("%s IN ?", c.findColumn), keys)

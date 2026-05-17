@@ -2,7 +2,6 @@ package gorm
 
 import (
 	"context"
-
 	model "github.com/activatedio/datainfra/examples/data/model"
 	repository "github.com/activatedio/datainfra/examples/data/repository"
 	data "github.com/activatedio/datainfra/pkg/data"
@@ -54,13 +53,13 @@ func NewCategoryRepository(CategoryRepositoryParams) repository.CategoryReposito
 		}),
 		FilterKeysTemplate: gorm.NewMappingFilterKeysTemplate[*model.Category, *CategoryInternal, string](gorm.MappingFilterKeysTemplateImplOptions[*model.Category, *CategoryInternal, string]{
 			Template:   template,
-			FindColumn: "Name",
+			FindColumn: "name",
 		}),
 	}
 }
 
 func (r *categoryRepositoryImpl) ListByProduct(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Category], error) {
 	return r.Template.DoList(ctx, func(tx *gorm1.DB) *gorm1.DB {
-		return tx.Joins("INNER JOIN product_categories ON product_categories.category_Name = categories.Name").Where("product_categories.product_SKU=?", key)
+		return tx.Joins("INNER JOIN product_categories ON product_categories.category_name = categories.name").Where("product_categories.product_sku=?", key)
 	}, params)
 }

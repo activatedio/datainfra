@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/activatedio/gen"
 	"github.com/dave/jennifer/jen"
+
+	"github.com/activatedio/datainfra/pkg/data"
 )
 
 // ImportThis is a package import path used for internal references within the codebase.

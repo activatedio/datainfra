@@ -3,14 +3,21 @@ package gorm
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
-	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/activatedio/datainfra/pkg/data"
 )
+
+// ErrDBNotInContext is returned by GetDB when the provided context has no
+// *gorm.DB attached. The usual cause is that NewContextBuilder.Build was not
+// invoked on the context (or WithDB was not called explicitly).
+var ErrDBNotInContext = errors.New("gorm: DB not in context")
 
 const (
 	// DialectPostgres is the dialect name for PostgreSQL databases.
@@ -103,12 +110,12 @@ func NewContextBuilder(db *gorm.DB) data.ContextBuilder {
 }
 
 // GetDB retrieves the *gorm.DB instance from the provided context.
-// Panics if the database instance is not found in the context.
-func GetDB(ctx context.Context) *gorm.DB {
+// Returns ErrDBNotInContext when no DB has been attached.
+func GetDB(ctx context.Context) (*gorm.DB, error) {
 
 	tx, ok := ctx.Value(dbKey).(*gorm.DB)
 	if !ok {
-		panic("DB not in context")
+		return nil, ErrDBNotInContext
 	}
-	return tx
+	return tx, nil
 }

@@ -3,11 +3,12 @@ package repository_test
 import (
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+
 	"github.com/activatedio/datainfra/examples/data/model"
 	"github.com/activatedio/datainfra/examples/data/repository"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestLocationRepository_Crud(t *testing.T) {

@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/activatedio/datainfra/pkg/reflect"
-	"gorm.io/gorm"
 )
 
 // MappingTemplate defines operations for mapping between external and internal representations of entities.
@@ -117,12 +118,16 @@ func (c *templateImpl[E, I]) ApplyContextScopeValueInjector(ctx context.Context,
 // DoFind performs a database query using the provided delegate function and processes the result based on row count.
 func (c *templateImpl[E, I]) DoFind(ctx context.Context, delegate func(db *gorm.DB, entry I) (*gorm.DB, error)) (E, error) {
 
-	tx := GetDB(ctx).Table(c.table)
+	db, err := GetDB(ctx)
+	if err != nil {
+		return reflect.NilInterface[E](), err
+	}
+	tx := db.Table(c.table)
 	tx = c.ApplyContextScopeQueryBuilder(ctx, tx, data.FetchTypeDetail)
 
 	e := reflect.ZeroInterface[I]()
 
-	tx, err := delegate(tx, e)
+	tx, err = delegate(tx, e)
 
 	if tx.Error != nil {
 		err = tx.Error
@@ -149,7 +154,11 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context,
 	criteriaBuilder func(tx *gorm.DB) *gorm.DB,
 	params data.ListParams) (*data.List[E], error) {
 
-	tx := GetDB(ctx).Table(c.table)
+	db, err := GetDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tx := db.Table(c.table)
 
 	tx = c.ApplyContextScopeQueryBuilder(ctx, tx, data.FetchTypeList)
 

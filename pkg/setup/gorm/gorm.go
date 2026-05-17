@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	datagorm "github.com/activatedio/datainfra/pkg/data/gorm"
-	"github.com/activatedio/datainfra/pkg/setup"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
+
+	datagorm "github.com/activatedio/datainfra/pkg/data/gorm"
+	"github.com/activatedio/datainfra/pkg/setup"
 )
 
 // gormSetup is a type that facilitates setting up and tearing down Gorm-based database configurations and connections.

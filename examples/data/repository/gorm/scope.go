@@ -3,10 +3,11 @@ package gorm
 import (
 	"context"
 
+	gorm1 "gorm.io/gorm"
+
 	"github.com/activatedio/datainfra/examples/data/model"
 	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/activatedio/datainfra/pkg/data/gorm"
-	gorm1 "gorm.io/gorm"
 )
 
 // WithTenantScope returns a ContextScopeFactory that applies a tenant filter to all queries.

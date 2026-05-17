@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/fx"
+
 	"github.com/activatedio/datainfra/examples/data/repository/gorm"
 	gormmigrations "github.com/activatedio/datainfra/examples/data/repository/gorm/migrations"
 	gormtestdata "github.com/activatedio/datainfra/examples/data/repository/testdata/gorm"
@@ -15,7 +17,6 @@ import (
 	gormtesting "github.com/activatedio/datainfra/pkg/data/gorm/testing"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
 	gormmigrate "github.com/activatedio/datainfra/pkg/migrate/gorm"
-	"go.uber.org/fx"
 )
 
 var (
