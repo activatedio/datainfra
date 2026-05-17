@@ -2,6 +2,7 @@ package gorm
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 
@@ -10,6 +11,10 @@ import (
 	"github.com/activatedio/datainfra/pkg/data"
 	"github.com/activatedio/datainfra/pkg/reflect"
 )
+
+// DefaultPageSize is the page size used when ListParams.PageParams is
+// non-nil but PageParams.Count is zero or negative.
+const DefaultPageSize = 100
 
 // MappingTemplate defines operations for mapping between external and internal representations of entities.
 type MappingTemplate[E any, I any] interface {
@@ -39,12 +44,22 @@ type templateImpl[E any, I any] struct {
 	table        string
 	toInternal   func(in E) I
 	fromInternal func(in I) E
+	keyColumn    string
+	keyAccessor  func(I) any
 }
 
 // TemplateParams defines parameters required for creating templates with optional context scope and table name.
+//
+// KeyColumn and KeyAccessor enable cursor pagination in DoList. KeyColumn is
+// the snake_case database column ordered on; KeyAccessor returns the value
+// of that column on a fetched row. Both must be supplied to enable
+// pagination; if either is empty, DoList falls back to a fixed-limit query
+// with no page tokens.
 type TemplateParams[E any, I any] struct {
 	ContextScope ContextScopeFactory
 	Table        string
+	KeyColumn    string
+	KeyAccessor  func(E) any
 }
 
 // NewTemplate initializes and returns a Template instance for mapping entities with the specified parameters.
@@ -53,6 +68,8 @@ func NewTemplate[E any](params TemplateParams[E, E]) Template[E] {
 	return NewMappingTemplate[E, E](MappingTemplateParams[E, E]{
 		ContextScope: params.ContextScope,
 		Table:        params.Table,
+		KeyColumn:    params.KeyColumn,
+		KeyAccessor:  params.KeyAccessor,
 		ToInternal: func(in E) E {
 			return in
 		},
@@ -64,11 +81,17 @@ func NewTemplate[E any](params TemplateParams[E, E]) Template[E] {
 }
 
 // MappingTemplateParams defines parameters for configuring a mapping template, including context, table, and conversion functions.
+//
+// See TemplateParams for the pagination-related fields KeyColumn and
+// KeyAccessor; KeyAccessor on a MappingTemplate reads from the internal
+// representation I.
 type MappingTemplateParams[E any, I any] struct {
 	ContextScope ContextScopeFactory
 	Table        string
 	ToInternal   func(in E) I
 	FromInternal func(in I) E
+	KeyColumn    string
+	KeyAccessor  func(I) any
 }
 
 // NewMappingTemplate initializes and returns a new MappingTemplate using the provided MappingTemplateParams.
@@ -79,6 +102,8 @@ func NewMappingTemplate[E any, I any](params MappingTemplateParams[E, I]) Mappin
 		table:        params.Table,
 		toInternal:   params.ToInternal,
 		fromInternal: params.FromInternal,
+		keyColumn:    params.KeyColumn,
+		keyAccessor:  params.KeyAccessor,
 	}
 }
 
@@ -150,7 +175,17 @@ func (c *templateImpl[E, I]) DoFind(ctx context.Context, delegate func(db *gorm.
 }
 
 // DoList retrieves a list of external entities based on the provided criteria and list parameters.
-func (c *templateImpl[E, I]) DoList(ctx context.Context,
+//
+// When params.PageParams is non-nil and the template was configured with a
+// KeyColumn + KeyAccessor, DoList paginates with a forward cursor over the
+// key column: it orders by the key ascending, applies PageToken as a strict
+// lower bound, fetches one extra row to detect overflow, and populates
+// NextPageToken on the response when more rows remain. Tokens are opaque
+// base64 strings; callers should treat them as cookies.
+//
+// When pagination is not configured, DoList applies a fixed DefaultPageSize
+// limit and never returns a NextPageToken.
+func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pagination, scope, criteria, and label filter checks each add a branch
 	criteriaBuilder func(tx *gorm.DB) *gorm.DB,
 	params data.ListParams) (*data.List[E], error) {
 
@@ -162,112 +197,45 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context,
 
 	tx = c.ApplyContextScopeQueryBuilder(ctx, tx, data.FetchTypeList)
 
-	if criteriaBuilder == nil {
-		criteriaBuilder = func(tx *gorm.DB) *gorm.DB {
-			return tx
-		}
+	if criteriaBuilder != nil {
+		tx = criteriaBuilder(tx)
 	}
 
-	/*
-
-			// TODO - implement
-
-			if pageParams == nil {
-				pageParams = &repository_inner.PageParams{
-					First: "",
-					Last:  "",
-					Count: 0,
-				}
-			}
-
-
-		if pageParams.Count == 0 {
-			// We default to a sensible number
-			pageParams.Count = 100
+	count, paginate := c.resolvePageCount(params.PageParams)
+	if paginate {
+		var err error
+		tx, err = c.applyPageCursor(tx, params.PageParams)
+		if err != nil {
+			return nil, err
 		}
-
-
-
-			// TODO - fix
-
-			for _, sc := range sortCriteria {
-				f := ToSnakeCase(sc.Field)
-				s := f
-				if sc.Reverse != (pageParams.First != "") {
-					s = s + " DESC"
-				}
-				tx = tx.Order(s)
-				if pageParams.First != "" {
-					tx = tx.Where(f+" < ?", pageParams.First)
-				} else if pageParams.Last != "" {
-					tx = tx.Where(f+" > ?", pageParams.Last)
-				}
-			}
-
-	*/
-
-	// tx = tx.Limit(pageParams.Count + 1)
-	tx = tx.Limit(100)
-
-	tx = criteriaBuilder(tx)
+		tx = tx.Order(c.keyColumn).Limit(count + 1)
+	} else {
+		tx = tx.Limit(count)
+	}
 
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
 
 	var results []I
-
 	tx.Find(&results)
 
 	if tx.Error != nil {
 		return nil, tx.Error
 	}
 
-	/*
-		TODO - Fix
-		overflow := pageParams.Count != 0 && len(results) == pageParams.Count+1
-
-		pageInfo := &repository_inner.PageInfo{}
-
-		if pageParams.First != "" {
-			reverseAny(results)
-			pageInfo.HasNextPage = true
-			if overflow {
-				pageInfo.HasPreviousPage = true
-			}
-		} else if pageParams.Last != "" {
-			pageInfo.HasPreviousPage = true
-			if overflow {
-				pageInfo.HasNextPage = true
-			}
-		} else {
-			if overflow {
-				pageInfo.HasNextPage = true
-			}
-		}
-
-		if overflow {
-			if pageParams.First != "" {
-				results = results[1:]
-			} else {
-				results = results[:len(results)-1]
-			}
-		}
-
-		if len(results) > 0 {
-			pageInfo.StartCursor = makeCursor2(sortCriteria, results[0])
-			pageInfo.EndCursor = makeCursor2(sortCriteria, results[len(results)-1])
-		}
-	*/
+	var nextToken string
+	if paginate && len(results) > count {
+		nextToken = c.encodeCursor(c.keyAccessor(results[count-1]))
+		results = results[:count]
+	}
 
 	externalResults := make([]E, len(results))
-
 	for i, in := range results {
 		externalResults[i] = c.fromInternal(in)
 	}
 
 	if params.Selector != nil {
-		var err error
 		externalResults, err = data.FilterByLabels(params.Selector, externalResults)
 		if err != nil {
 			return nil, err
@@ -275,6 +243,37 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context,
 	}
 
 	return &data.List[E]{
-		List: externalResults,
+		NextPageToken: nextToken,
+		List:          externalResults,
 	}, nil
+}
+
+// resolvePageCount returns the row limit to apply and whether cursor
+// pagination is active. Pagination requires both a configured KeyColumn /
+// KeyAccessor and a non-nil PageParams.
+func (c *templateImpl[E, I]) resolvePageCount(pp *data.PageParams) (int, bool) {
+	if pp == nil || c.keyColumn == "" || c.keyAccessor == nil {
+		return DefaultPageSize, false
+	}
+	if pp.Count <= 0 {
+		return DefaultPageSize, true
+	}
+	return pp.Count, true
+}
+
+// applyPageCursor applies the PageToken (if any) as a strict lower-bound
+// WHERE clause on the key column.
+func (c *templateImpl[E, I]) applyPageCursor(tx *gorm.DB, pp *data.PageParams) (*gorm.DB, error) {
+	if pp.PageToken == "" {
+		return tx, nil
+	}
+	decoded, err := base64.StdEncoding.DecodeString(pp.PageToken)
+	if err != nil {
+		return nil, fmt.Errorf("invalid page token: %w", err)
+	}
+	return tx.Where(fmt.Sprintf("%s > ?", c.keyColumn), string(decoded)), nil
+}
+
+func (c *templateImpl[E, I]) encodeCursor(key any) string {
+	return base64.StdEncoding.EncodeToString([]byte(fmt.Sprint(key)))
 }

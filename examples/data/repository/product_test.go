@@ -24,14 +24,30 @@ func TestProductRepository_Search(t *testing.T) {
 				FixtureEntries: func() map[string]*datatesting.SearchTestFixtureEntry[*model.Product] {
 					switch md.Name {
 					case "sqlite":
-						return map[string]*datatesting.SearchTestFixtureEntry[*model.Product]{}
-					case "postgres":
 						return map[string]*datatesting.SearchTestFixtureEntry[*model.Product]{
-							"keywords": {
+							"@keywords-via-dialect-binder": {
 								Arrange: func(ctx context.Context) (context.Context, []*data.SearchPredicate) {
 									return ctx, []*data.SearchPredicate{
 										{
-											Name:        "keywords",
+											Name:        "@keywords",
+											Operator:    data.SearchOperatorStringMatch,
+											StringValue: "Test",
+										},
+									}
+								},
+								Assert: func(got *data.List[*data.SearchResult[*model.Product]], err error) {
+									r.NoError(err)
+									a.Len(got.List, 2)
+								},
+							},
+						}
+					case "postgres":
+						return map[string]*datatesting.SearchTestFixtureEntry[*model.Product]{
+							"@keywords": {
+								Arrange: func(ctx context.Context) (context.Context, []*data.SearchPredicate) {
+									return ctx, []*data.SearchPredicate{
+										{
+											Name:        "@keywords",
 											Operator:    data.SearchOperatorStringMatch,
 											StringValue: "Test",
 										},
@@ -109,15 +125,17 @@ func TestProductRepository_GetSearchPredicates(t *testing.T) {
 		r.NoError(err)
 		a.Equal([]*data.SearchPredicateDescriptor{
 			{
-				Name:  "@keywords",
-				Label: "Keywords",
+				Name:    "@keywords",
+				Label:   "Keywords",
+				Virtual: true,
 				Operators: []data.SearchOperator{
 					data.SearchOperatorStringMatch,
 				},
 			},
 			{
-				Name:  "@query",
-				Label: "Query",
+				Name:    "@query",
+				Label:   "Query",
+				Virtual: true,
 				Operators: []data.SearchOperator{
 					data.SearchOperatorStringMatch,
 				},
@@ -190,5 +208,44 @@ func TestProductRepository_Associate(t *testing.T) {
 			a.Empty(got.List)
 		}
 
+	})
+}
+
+func TestProductRepository_ListAllPagination(t *testing.T) {
+	a := assert.New(t)
+	r := require.New(t)
+	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider, unit repository.ProductRepository) {
+		ctx := cp.GetContext()
+
+		page1, err := unit.ListAll(ctx, data.ListParams{
+			PageParams: &data.PageParams{Count: 2},
+		})
+		r.NoError(err)
+		a.Len(page1.List, 2)
+		a.NotEmpty(page1.NextPageToken, "expected NextPageToken on first page")
+
+		page2, err := unit.ListAll(ctx, data.ListParams{
+			PageParams: &data.PageParams{Count: 2, PageToken: page1.NextPageToken},
+		})
+		r.NoError(err)
+		a.Len(page2.List, 2)
+
+		// Rows on page2 must all sort strictly after page1's last row.
+		lastOnPage1 := page1.List[len(page1.List)-1].SKU
+		for _, p := range page2.List {
+			a.Greater(p.SKU, lastOnPage1, "page2 row %q should sort after page1 last %q", p.SKU, lastOnPage1)
+		}
+
+		// Walk to the end with successive cursors; on the final page the
+		// token must be empty.
+		token := page2.NextPageToken
+		for i := 0; token != "" && i < 100; i++ {
+			next, err := unit.ListAll(ctx, data.ListParams{
+				PageParams: &data.PageParams{Count: 2, PageToken: token},
+			})
+			r.NoError(err)
+			token = next.NextPageToken
+		}
+		a.Empty(token, "pagination should terminate with an empty NextPageToken")
 	})
 }

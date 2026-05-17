@@ -43,6 +43,10 @@ func NewProductRepository(params ProductRepositoryParams) repository.ProductRepo
 		FromInternal: func(m *ProductInternal) *model.Product {
 			return m.Product
 		},
+		KeyColumn: "sku",
+		KeyAccessor: func(m *ProductInternal) any {
+			return m.SKU
+		},
 	})
 	return &productRepositoryImpl{
 		Template: template,
@@ -57,20 +61,28 @@ func NewProductRepository(params ProductRepositoryParams) repository.ProductRepo
 		}),
 		SearchTemplate: gorm.NewMappingSearchTemplate[*model.Product, *ProductInternal](gorm.MappingSearchTemplateParams[*model.Product, *ProductInternal]{
 			Template: template,
-			SearchPredicates: []*data.SearchPredicateDescriptor{
+			Bindings: []gorm.SearchPredicateBinding{
 				{
-					Name:  "@keywords",
-					Label: "Keywords",
-					Operators: []data.SearchOperator{
-						data.SearchOperatorStringMatch,
+					Descriptor: &data.SearchPredicateDescriptor{
+						Name:    "@keywords",
+						Label:   "Keywords",
+						Virtual: true,
+						Operators: []data.SearchOperator{
+							data.SearchOperatorStringMatch,
+						},
 					},
+					Binder: gorm.DialectBinder(map[string]gorm.PredicateBinder{"postgres": gorm.PostgresKeywordsBinder("full_text"), "sqlite": gorm.LikeBinder("description")}),
 				},
 				{
-					Name:  "@query",
-					Label: "Query",
-					Operators: []data.SearchOperator{
-						data.SearchOperatorStringMatch,
+					Descriptor: &data.SearchPredicateDescriptor{
+						Name:    "@query",
+						Label:   "Query",
+						Virtual: true,
+						Operators: []data.SearchOperator{
+							data.SearchOperatorStringMatch,
+						},
 					},
+					Binder: gorm.LikeBinder("description"),
 				},
 			},
 		}),

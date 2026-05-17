@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"sort"
 
 	"github.com/activatedio/gen"
 	"github.com/dave/jennifer/jen"
 	"github.com/iancoleman/strcase"
 
 	"github.com/activatedio/datainfra/genlib/data"
+	pkgdata "github.com/activatedio/datainfra/pkg/data"
 )
 
 // ImportThis defines the import path for the gorm package utilized by the data infrastructure library.
@@ -79,9 +81,57 @@ type Ctor struct {
 	Entry *data.Entry
 }
 
-// Search contains predicates for gorm
+// Search contains the search predicate bindings for the gorm flavor. Each
+// binding pairs the descriptor metadata exposed via GetSearchPredicates
+// with a jen expression that constructs the runtime PredicateBinder. Use
+// helpers such as PostgresKeywordsBinderCall and LikeBinderCall to produce
+// well-formed Binder values.
 type Search struct {
-	Predicates data.SearchPredicates
+	Bindings []SearchBinding
+}
+
+// SearchBinding describes one entry in a gorm Search implementation. Name,
+// Label, Virtual and Operators are surfaced through GetSearchPredicates.
+// Binder must be jen code that evaluates to a gorm.PredicateBinder.
+//
+// Virtual marks the predicate as not corresponding to a real domain field
+// (typically named with a leading "@" such as "@keywords"). See
+// data.SearchPredicateDescriptor.Virtual for the wire semantics.
+type SearchBinding struct {
+	Name      string
+	Label     string
+	Virtual   bool
+	Operators []pkgdata.SearchOperator
+	Binder    jen.Code
+}
+
+// PostgresKeywordsBinderCall returns jen code that evaluates to
+// gorm.PostgresKeywordsBinder(column).
+func PostgresKeywordsBinderCall(column string) jen.Code {
+	return jen.Qual(ImportThis, "PostgresKeywordsBinder").Call(jen.Lit(column))
+}
+
+// LikeBinderCall returns jen code that evaluates to gorm.LikeBinder(column).
+func LikeBinderCall(column string) jen.Code {
+	return jen.Qual(ImportThis, "LikeBinder").Call(jen.Lit(column))
+}
+
+// DialectBinderCall returns jen code that evaluates to gorm.DialectBinder
+// over the supplied per-dialect map. Keys are emitted in sorted order so the
+// generated source is deterministic.
+func DialectBinderCall(byDialect map[string]jen.Code) jen.Code {
+	keys := make([]string, 0, len(byDialect))
+	for k := range byDialect {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	pairs := make([]jen.Code, 0, len(keys))
+	for _, k := range keys {
+		pairs = append(pairs, jen.Lit(k).Op(":").Add(byDialect[k]))
+	}
+	return jen.Qual(ImportThis, "DialectBinder").Call(
+		jen.Map(jen.String()).Qual(ImportThis, "PredicateBinder").Values(pairs...),
+	)
 }
 
 // TemplateFields defines a structured type used for mapping data between internal and external representations.
@@ -228,6 +278,19 @@ func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 			jen.Return(jen.Id("m").Op(".").Id(jh.StructName)),
 		).Op(","))
 
+		// Cursor pagination is enabled only for entities with a single key.
+		// Composite keys would need lexicographic cursor semantics beyond the
+		// current ORDER BY / WHERE > scheme and are left to a future change.
+		if len(jh.Keys) == 1 {
+			keyName := jh.Keys[0].Name
+			tmplStmt.Add(jen.Id("KeyColumn").Op(":").Lit(strcase.ToSnake(keyName)).Op(","))
+			tmplStmt.Add(jen.Id("KeyAccessor").Op(":").Func().Params(
+				jen.Id("m").Op("*").Id(internalName),
+			).Any().Block(
+				jen.Return(jen.Id("m").Dot(keyName)),
+			).Op(","))
+		}
+
 		return s.Add(jen.Id("template").Op(":=").Qual(ImportThis, "NewMappingTemplate").Types(
 			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
 		).Call(jen.Qual(ImportThis, "MappingTemplateParams").Types(
@@ -343,12 +406,11 @@ func addSearchHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 		gs := data.GetImplementation[Search](d)
 
-		var predicates *jen.Statement
-
-		if len(gs.Predicates) == 0 {
-			predicates = jen.Nil()
+		var bindings jen.Code
+		if len(gs.Bindings) == 0 {
+			bindings = jen.Nil()
 		} else {
-			predicates = gs.Predicates.Generate()
+			bindings = generateSearchBindings(gs.Bindings)
 		}
 
 		internalName := jh.StructName + "Internal"
@@ -358,11 +420,59 @@ func addSearchHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
 		).Block(
 			jen.Id("Template").Op(":").Id("template").Op(","),
-			jen.Id("SearchPredicates").Op(":").Add(predicates).Op(","),
+			jen.Id("Bindings").Op(":").Add(bindings).Op(","),
 		)).Op(","))
 
 	})
 
+}
+
+func generateSearchBindings(bindings []SearchBinding) *jen.Statement {
+
+	entries := &jen.Statement{}
+	for _, b := range bindings {
+		if b.Binder == nil {
+			panic(fmt.Sprintf("gorm.SearchBinding %q is missing a Binder; use PostgresKeywordsBinderCall or LikeBinderCall", b.Name))
+		}
+
+		ops := make([]jen.Code, 0, len(b.Operators))
+		for _, op := range b.Operators {
+			ops = append(ops, operatorJenCode(op))
+		}
+
+		descriptorFields := &jen.Statement{
+			jen.Id("Name").Op(":").Lit(b.Name).Op(","),
+			jen.Id("Label").Op(":").Lit(b.Label).Op(","),
+		}
+		if b.Virtual {
+			descriptorFields.Add(jen.Id("Virtual").Op(":").Lit(true).Op(","))
+		}
+		descriptorFields.Add(jen.Id("Operators").Op(":").Index().Qual(data.ImportThis, "SearchOperator").Block(ops...).Op(","))
+
+		entries.Add(jen.Block(
+			jen.Id("Descriptor").Op(":").Op("&").Qual(data.ImportThis, "SearchPredicateDescriptor").Block(*descriptorFields...).Op(","),
+			jen.Id("Binder").Op(":").Add(b.Binder).Op(","),
+		).Op(","))
+	}
+
+	return jen.Index().Qual(ImportThis, "SearchPredicateBinding").Block(*entries...)
+}
+
+func operatorJenCode(op pkgdata.SearchOperator) *jen.Statement {
+	names := map[pkgdata.SearchOperator]string{
+		pkgdata.SearchOperatorNumberEquals:    "SearchOperatorNumberEquals",
+		pkgdata.SearchOperatorStringEquals:    "SearchOperatorStringEquals",
+		pkgdata.SearchOperatorStringNotEquals: "SearchOperatorStringNotEquals",
+		pkgdata.SearchOperatorStringMatch:     "SearchOperatorStringMatch",
+		pkgdata.SearchOperatorStringIn:        "SearchOperatorStringIn",
+		pkgdata.SearchOperatorStringNotIn:     "SearchOperatorStringNotIn",
+		pkgdata.SearchOperatorNumberNotEquals: "SearchOperatorNumberNotEquals",
+		pkgdata.SearchOperatorNumberIn:        "SearchOperatorNumberIn",
+	}
+	if name, ok := names[op]; ok {
+		return jen.Qual(data.ImportThis, name).Op(",")
+	}
+	panic(fmt.Sprintf("unknown SearchOperator %d", op))
 }
 
 // addAssociateHandlers adds handlers to facilitate the management of associate relationships between data entities.

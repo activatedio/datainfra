@@ -53,16 +53,23 @@ func main() {
 					AssociatedType: reflect.TypeFor[model.Category](),
 				},
 				gorm.Search{
-					Predicates: []data.SearchPredicateEntry{
+					Bindings: []gorm.SearchBinding{
 						{
 							Name:      "@keywords",
 							Label:     "Keywords",
+							Virtual:   true,
 							Operators: []data2.SearchOperator{data2.SearchOperatorStringMatch},
+							Binder: gorm.DialectBinderCall(map[string]jen.Code{
+								"postgres": gorm.PostgresKeywordsBinderCall("full_text"),
+								"sqlite":   gorm.LikeBinderCall("description"),
+							}),
 						},
 						{
 							Name:      "@query",
 							Label:     "Query",
+							Virtual:   true,
 							Operators: []data2.SearchOperator{data2.SearchOperatorStringMatch},
+							Binder:    gorm.LikeBinderCall("description"),
 						},
 					},
 				},

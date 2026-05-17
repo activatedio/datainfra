@@ -68,9 +68,16 @@ type SearchResult[E any] struct {
 }
 
 // SearchPredicateDescriptor represents a descriptor for a search predicate with a name, label, and allowed operators.
+//
+// Virtual marks predicates that do not correspond to a real domain field —
+// for example, full-text search predicates that span multiple columns. The
+// convention is to name virtual predicates with a leading "@" (e.g.
+// "@keywords") so clients without access to the bool can still recognize
+// them on the wire; the bool exists for programmatic dispatch.
 type SearchPredicateDescriptor struct {
 	Name      string
 	Label     string
+	Virtual   bool
 	Operators []SearchOperator
 }
 
