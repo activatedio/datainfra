@@ -38,6 +38,10 @@ func NewLocationRepository(LocationRepositoryParams) repository.LocationReposito
 		FromInternal: func(m *LocationInternal) *model.Location {
 			return m.Location
 		},
+		KeyColumns: []string{"city", "state"},
+		KeyAccessor: func(m *LocationInternal) []any {
+			return []any{m.Key.City, m.Key.State}
+		},
 	})
 	return &locationRepositoryImpl{
 		Template: template,

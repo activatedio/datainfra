@@ -45,9 +45,9 @@ func NewThemeRepository(ThemeRepositoryParams) repository.ThemeRepository {
 		FromInternal: func(m *ThemeInternal) *model.Theme {
 			return m.Theme
 		},
-		KeyColumn: "name",
-		KeyAccessor: func(m *ThemeInternal) any {
-			return m.Name
+		KeyColumns: []string{"name"},
+		KeyAccessor: func(m *ThemeInternal) []any {
+			return []any{m.Name}
 		},
 	})
 	return &themeRepositoryImpl{

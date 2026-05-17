@@ -3,8 +3,10 @@ package gorm
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -44,22 +46,23 @@ type templateImpl[E any, I any] struct {
 	table        string
 	toInternal   func(in E) I
 	fromInternal func(in I) E
-	keyColumn    string
-	keyAccessor  func(I) any
+	keyColumns   []string
+	keyAccessor  func(I) []any
 }
 
 // TemplateParams defines parameters required for creating templates with optional context scope and table name.
 //
-// KeyColumn and KeyAccessor enable cursor pagination in DoList. KeyColumn is
-// the snake_case database column ordered on; KeyAccessor returns the value
-// of that column on a fetched row. Both must be supplied to enable
-// pagination; if either is empty, DoList falls back to a fixed-limit query
-// with no page tokens.
+// KeyColumns and KeyAccessor enable cursor pagination in DoList. KeyColumns
+// lists the snake_case database columns ordered on (in canonical order, one
+// entry for single-key entities, multiple for composite keys); KeyAccessor
+// returns the values of those columns from a fetched row, in matching
+// order. Both must be supplied to enable pagination; otherwise DoList falls
+// back to a fixed-limit query with no page tokens.
 type TemplateParams[E any, I any] struct {
 	ContextScope ContextScopeFactory
 	Table        string
-	KeyColumn    string
-	KeyAccessor  func(E) any
+	KeyColumns   []string
+	KeyAccessor  func(E) []any
 }
 
 // NewTemplate initializes and returns a Template instance for mapping entities with the specified parameters.
@@ -68,7 +71,7 @@ func NewTemplate[E any](params TemplateParams[E, E]) Template[E] {
 	return NewMappingTemplate[E, E](MappingTemplateParams[E, E]{
 		ContextScope: params.ContextScope,
 		Table:        params.Table,
-		KeyColumn:    params.KeyColumn,
+		KeyColumns:   params.KeyColumns,
 		KeyAccessor:  params.KeyAccessor,
 		ToInternal: func(in E) E {
 			return in
@@ -82,7 +85,7 @@ func NewTemplate[E any](params TemplateParams[E, E]) Template[E] {
 
 // MappingTemplateParams defines parameters for configuring a mapping template, including context, table, and conversion functions.
 //
-// See TemplateParams for the pagination-related fields KeyColumn and
+// See TemplateParams for the pagination-related fields KeyColumns and
 // KeyAccessor; KeyAccessor on a MappingTemplate reads from the internal
 // representation I.
 type MappingTemplateParams[E any, I any] struct {
@@ -90,8 +93,8 @@ type MappingTemplateParams[E any, I any] struct {
 	Table        string
 	ToInternal   func(in E) I
 	FromInternal func(in I) E
-	KeyColumn    string
-	KeyAccessor  func(I) any
+	KeyColumns   []string
+	KeyAccessor  func(I) []any
 }
 
 // NewMappingTemplate initializes and returns a new MappingTemplate using the provided MappingTemplateParams.
@@ -102,7 +105,7 @@ func NewMappingTemplate[E any, I any](params MappingTemplateParams[E, I]) Mappin
 		table:        params.Table,
 		toInternal:   params.ToInternal,
 		fromInternal: params.FromInternal,
-		keyColumn:    params.KeyColumn,
+		keyColumns:   params.KeyColumns,
 		keyAccessor:  params.KeyAccessor,
 	}
 }
@@ -208,7 +211,7 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pag
 		if err != nil {
 			return nil, err
 		}
-		tx = tx.Order(c.keyColumn).Limit(count + 1)
+		tx = tx.Order(strings.Join(c.keyColumns, ", ")).Limit(count + 1)
 	} else {
 		tx = tx.Limit(count)
 	}
@@ -226,7 +229,10 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pag
 
 	var nextToken string
 	if paginate && len(results) > count {
-		nextToken = c.encodeCursor(c.keyAccessor(results[count-1]))
+		nextToken, err = c.encodeCursor(c.keyAccessor(results[count-1]))
+		if err != nil {
+			return nil, err
+		}
 		results = results[:count]
 	}
 
@@ -249,10 +255,10 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pag
 }
 
 // resolvePageCount returns the row limit to apply and whether cursor
-// pagination is active. Pagination requires both a configured KeyColumn /
-// KeyAccessor and a non-nil PageParams.
+// pagination is active. Pagination requires both a configured non-empty
+// KeyColumns plus a KeyAccessor and a non-nil PageParams.
 func (c *templateImpl[E, I]) resolvePageCount(pp *data.PageParams) (int, bool) {
-	if pp == nil || c.keyColumn == "" || c.keyAccessor == nil {
+	if pp == nil || len(c.keyColumns) == 0 || c.keyAccessor == nil {
 		return DefaultPageSize, false
 	}
 	if pp.Count <= 0 {
@@ -262,7 +268,8 @@ func (c *templateImpl[E, I]) resolvePageCount(pp *data.PageParams) (int, bool) {
 }
 
 // applyPageCursor applies the PageToken (if any) as a strict lower-bound
-// WHERE clause on the key column.
+// row-constructor WHERE clause: (col1, col2, ...) > (v1, v2, ...). Single-
+// key entities reduce to (col1) > (v1) which the SQL engines accept.
 func (c *templateImpl[E, I]) applyPageCursor(tx *gorm.DB, pp *data.PageParams) (*gorm.DB, error) {
 	if pp.PageToken == "" {
 		return tx, nil
@@ -271,9 +278,32 @@ func (c *templateImpl[E, I]) applyPageCursor(tx *gorm.DB, pp *data.PageParams) (
 	if err != nil {
 		return nil, fmt.Errorf("invalid page token: %w", err)
 	}
-	return tx.Where(fmt.Sprintf("%s > ?", c.keyColumn), string(decoded)), nil
+	var values []string
+	if err := json.Unmarshal(decoded, &values); err != nil {
+		return nil, fmt.Errorf("invalid page token: %w", err)
+	}
+	if len(values) != len(c.keyColumns) {
+		return nil, fmt.Errorf("invalid page token: expected %d values, got %d", len(c.keyColumns), len(values))
+	}
+
+	cols := "(" + strings.Join(c.keyColumns, ", ") + ")"
+	placeholders := "(" + strings.Repeat("?, ", len(values))
+	placeholders = strings.TrimSuffix(placeholders, ", ") + ")"
+	args := make([]any, len(values))
+	for i, v := range values {
+		args[i] = v
+	}
+	return tx.Where(fmt.Sprintf("%s > %s", cols, placeholders), args...), nil
 }
 
-func (c *templateImpl[E, I]) encodeCursor(key any) string {
-	return base64.StdEncoding.EncodeToString([]byte(fmt.Sprint(key)))
+func (c *templateImpl[E, I]) encodeCursor(values []any) (string, error) {
+	strs := make([]string, len(values))
+	for i, v := range values {
+		strs[i] = fmt.Sprint(v)
+	}
+	encoded, err := json.Marshal(strs)
+	if err != nil {
+		return "", fmt.Errorf("encode page token: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(encoded), nil
 }

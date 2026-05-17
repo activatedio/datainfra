@@ -146,7 +146,19 @@ func addCrudHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 		c := GetImplementation[Crud](d)
 
-		for _, op := range c.Operations.All() {
+		// Iterate in canonical order — c.Operations.All() walks a map, so it
+		// would otherwise produce a different method order on every run.
+		canonical := []Operation{
+			OperationFindByKey,
+			OperationList,
+			OperationCreate,
+			OperationUpdate,
+			OperationDelete,
+		}
+		for _, op := range canonical {
+			if !c.Operations.Contains(op) {
+				continue
+			}
 			switch op {
 			case OperationFindByKey:
 				s.Add(jen.Id("FindByKey").Params(

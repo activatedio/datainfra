@@ -10,13 +10,13 @@ import (
 
 // LocationRepository is a repository for the type Location
 type LocationRepository interface {
-	Delete(context.Context, model.LocationKey) error
-	DeleteEntity(context.Context, *model.Location) error
 	FindByKey(context.Context, model.LocationKey) (*model.Location, error)
 	ExistsByKey(context.Context, model.LocationKey) (bool, error)
 	ListAll(context.Context, data.ListParams) (*data.List[*model.Location], error)
 	Create(context.Context, *model.Location) error
 	Update(context.Context, *model.Location) error
+	Delete(context.Context, model.LocationKey) error
+	DeleteEntity(context.Context, *model.Location) error
 }
 
 // CategoryRepository is a repository for the type Category
@@ -34,13 +34,13 @@ type CategoryRepository interface {
 
 // ProductRepository is a repository for the type Product
 type ProductRepository interface {
+	FindByKey(context.Context, string) (*model.Product, error)
+	ExistsByKey(context.Context, string) (bool, error)
 	ListAll(context.Context, data.ListParams) (*data.List[*model.Product], error)
 	Create(context.Context, *model.Product) error
 	Update(context.Context, *model.Product) error
 	Delete(context.Context, string) error
 	DeleteEntity(context.Context, *model.Product) error
-	FindByKey(context.Context, string) (*model.Product, error)
-	ExistsByKey(context.Context, string) (bool, error)
 	Search(ctx context.Context, criteria []*data.SearchPredicate, params *data.PageParams) (*data.List[*data.SearchResult[*model.Product]], error)
 	GetSearchPredicates(context.Context) ([]*data.SearchPredicateDescriptor, error)
 	AssociateCategories(ctx context.Context, key string, add []string, remove []string) error

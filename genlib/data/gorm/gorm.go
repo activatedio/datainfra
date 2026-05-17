@@ -278,16 +278,26 @@ func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 			jen.Return(jen.Id("m").Op(".").Id(jh.StructName)),
 		).Op(","))
 
-		// Cursor pagination is enabled only for entities with a single key.
-		// Composite keys would need lexicographic cursor semantics beyond the
-		// current ORDER BY / WHERE > scheme and are left to a future change.
-		if len(jh.Keys) == 1 {
-			keyName := jh.Keys[0].Name
-			tmplStmt.Add(jen.Id("KeyColumn").Op(":").Lit(strcase.ToSnake(keyName)).Op(","))
+		// Cursor pagination: emit KeyColumns + KeyAccessor for every entity
+		// with at least one key. Composite keys land lexicographic
+		// pagination via row-constructor WHERE clauses.
+		if len(jh.Keys) >= 1 {
+			cols := make([]jen.Code, len(jh.Keys))
+			accessors := make([]jen.Code, len(jh.Keys))
+			compositeRoot := jh.KeyField.Type.Kind() == reflect.Struct
+			for i, k := range jh.Keys {
+				cols[i] = jen.Lit(strcase.ToSnake(k.Name))
+				if compositeRoot {
+					accessors[i] = jen.Id("m").Dot(jh.KeyField.Name).Dot(k.Name)
+				} else {
+					accessors[i] = jen.Id("m").Dot(k.Name)
+				}
+			}
+			tmplStmt.Add(jen.Id("KeyColumns").Op(":").Index().String().Values(cols...).Op(","))
 			tmplStmt.Add(jen.Id("KeyAccessor").Op(":").Func().Params(
 				jen.Id("m").Op("*").Id(internalName),
-			).Any().Block(
-				jen.Return(jen.Id("m").Dot(keyName)),
+			).Index().Any().Block(
+				jen.Return(jen.Index().Any().Values(accessors...)),
 			).Op(","))
 		}
 

@@ -43,9 +43,9 @@ func NewProductRepository(params ProductRepositoryParams) repository.ProductRepo
 		FromInternal: func(m *ProductInternal) *model.Product {
 			return m.Product
 		},
-		KeyColumn: "sku",
-		KeyAccessor: func(m *ProductInternal) any {
-			return m.SKU
+		KeyColumns: []string{"sku"},
+		KeyAccessor: func(m *ProductInternal) []any {
+			return []any{m.SKU}
 		},
 	})
 	return &productRepositoryImpl{

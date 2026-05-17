@@ -41,9 +41,9 @@ func NewCategoryRepository(CategoryRepositoryParams) repository.CategoryReposito
 		FromInternal: func(m *CategoryInternal) *model.Category {
 			return m.Category
 		},
-		KeyColumn: "name",
-		KeyAccessor: func(m *CategoryInternal) any {
-			return m.Name
+		KeyColumns: []string{"name"},
+		KeyAccessor: func(m *CategoryInternal) []any {
+			return []any{m.Name}
 		},
 	})
 	return &categoryRepositoryImpl{
