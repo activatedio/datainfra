@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"time"
 
 	// TODO - can we use another interface type to mock what is needed here?
 	"k8s.io/apimachinery/pkg/labels"
@@ -98,6 +99,119 @@ type SearchTemplate[E any] interface {
 	Search(ctx context.Context, criteria []*SearchPredicate, pageParams *PageParams) (*List[*SearchResult[E]], error)
 	// GetSearchPredicates returns a list of available search predicates for filtering results.
 	GetSearchPredicates(ctx context.Context) ([]*SearchPredicateDescriptor, error)
+}
+
+// HistogramIntervalUnit names a calendar/duration unit for histogram
+// bucketing. HistogramIntervalAuto defers the choice to the backend,
+// which picks the smallest unit that yields ~30–100 buckets across the
+// requested [min, max] window.
+type HistogramIntervalUnit int
+
+const (
+	// HistogramIntervalAuto lets the backend pick the unit based on [min, max].
+	HistogramIntervalAuto HistogramIntervalUnit = iota
+	// HistogramIntervalMinute buckets by minute(s). Step >1 produces fixed-width buckets.
+	HistogramIntervalMinute
+	// HistogramIntervalHour buckets by hour(s). Step >1 produces fixed-width buckets.
+	HistogramIntervalHour
+	// HistogramIntervalDay buckets by calendar day.
+	HistogramIntervalDay
+	// HistogramIntervalWeek buckets by calendar week.
+	HistogramIntervalWeek
+	// HistogramIntervalMonth buckets by calendar month.
+	HistogramIntervalMonth
+)
+
+// HistogramInterval is the bucket-width specification for a histogram
+// query. Step is the number of Unit per bucket; 0 or 1 both mean one
+// Unit per bucket. Step is meaningful for Minute and Hour (fixed-width
+// buckets like 5m, 3h); it is ignored for Day, Week, and Month, which
+// always use calendar boundaries.
+type HistogramInterval struct {
+	Unit HistogramIntervalUnit
+	Step int
+}
+
+// HistogramSpec is the request payload for a date-histogram aggregation.
+// Min and Max bound the window inclusively; the backend returns one
+// bucket per Interval slice across [Min, Max], including empty buckets.
+type HistogramSpec struct {
+	Interval HistogramInterval
+	Min      time.Time
+	Max      time.Time
+}
+
+// HistogramBucket is a single time-slice count.
+type HistogramBucket struct {
+	Key   time.Time
+	Count int64
+}
+
+// HistogramResult is the response payload for a date-histogram query.
+// ResolvedInterval echoes the unit/step the backend actually used —
+// when the caller asked for HistogramIntervalAuto this is the unit the
+// backend picked, so the client can label buckets without re-running
+// the resolver locally.
+type HistogramResult struct {
+	ResolvedInterval HistogramInterval
+	Buckets          []*HistogramBucket
+}
+
+// SearchHistogramTemplate is the histogram counterpart to SearchTemplate.
+// It is intentionally separate so a backend can implement search without
+// implementing histogram (e.g. gorm today only supports filtered search).
+type SearchHistogramTemplate[E any] interface {
+	// SearchHistogram applies the same predicate filter as Search and
+	// returns one bucket count per slice across [spec.Min, spec.Max].
+	SearchHistogram(ctx context.Context, criteria []*SearchPredicate, spec *HistogramSpec) (*HistogramResult, error)
+}
+
+// ResolveAutoInterval picks the smallest calendar/fixed unit that yields
+// at most targetBuckets across [min, max]. The ladder mirrors what
+// Kibana does in its date-histogram defaults so dashboards stay
+// readable as the time window widens:
+//
+//	1m → 5m → 10m → 30m → 1h → 3h → 12h → 1d → 1w → 1mo
+//
+// targetBuckets defaults to 50 when 0 or negative. Min/Max ordering is
+// not enforced — callers can pass them in either order and the
+// resolver will use the absolute duration. When min == max the
+// resolver returns the smallest unit (Minute, step 1).
+func ResolveAutoInterval(min, max time.Time, targetBuckets int) HistogramInterval {
+	if targetBuckets <= 0 {
+		targetBuckets = 50
+	}
+	d := max.Sub(min)
+	if d < 0 {
+		d = -d
+	}
+	if d == 0 {
+		return HistogramInterval{Unit: HistogramIntervalMinute, Step: 1}
+	}
+
+	type rung struct {
+		interval HistogramInterval
+		width    time.Duration
+	}
+	ladder := []rung{
+		{HistogramInterval{Unit: HistogramIntervalMinute, Step: 1}, time.Minute},
+		{HistogramInterval{Unit: HistogramIntervalMinute, Step: 5}, 5 * time.Minute},
+		{HistogramInterval{Unit: HistogramIntervalMinute, Step: 10}, 10 * time.Minute},
+		{HistogramInterval{Unit: HistogramIntervalMinute, Step: 30}, 30 * time.Minute},
+		{HistogramInterval{Unit: HistogramIntervalHour, Step: 1}, time.Hour},
+		{HistogramInterval{Unit: HistogramIntervalHour, Step: 3}, 3 * time.Hour},
+		{HistogramInterval{Unit: HistogramIntervalHour, Step: 12}, 12 * time.Hour},
+		{HistogramInterval{Unit: HistogramIntervalDay, Step: 1}, 24 * time.Hour},
+		{HistogramInterval{Unit: HistogramIntervalWeek, Step: 1}, 7 * 24 * time.Hour},
+		{HistogramInterval{Unit: HistogramIntervalMonth, Step: 1}, 30 * 24 * time.Hour},
+	}
+	target := time.Duration(targetBuckets)
+	for _, r := range ladder {
+		if d/r.width <= target {
+			return r.interval
+		}
+	}
+	return ladder[len(ladder)-1].interval
 }
 
 // None represents a type used as a placeholder or marker when no meaningful value or identifier is required.

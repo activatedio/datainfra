@@ -35,6 +35,15 @@ type Crud struct {
 type Search struct {
 }
 
+// SearchHistogram is a marker that opts an entry into the
+// SearchHistogram method on its generated repository interface.
+// Per-backend implementations are selected by backend-specific markers
+// (e.g. elasticsearch.Implementation.Histogram); a generator that has
+// no backend implementation for the entry should emit a stub that
+// returns an error so the interface stays satisfied.
+type SearchHistogram struct {
+}
+
 // SearchPredicates represents a slice of SearchPredicateDescriptor instances.
 type SearchPredicates []SearchPredicateEntry
 
@@ -232,6 +241,29 @@ func addSearchHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 }
 
+// addSearchHistogramHandlers registers a statement handler that emits
+// the SearchHistogram method on the generated repository interface for
+// entries opted in via the SearchHistogram marker.
+func addSearchHistogramHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
+
+	return he.AddStatementHandler(gen.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
+		return HasImplementation[SearchHistogram](in.Entry)
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
+
+		return s.Add(
+			jen.Id("SearchHistogram").Params(
+				jen.Id("ctx").Add(QualCtx),
+				jen.Id("criteria").Op("[]*").Qual(ImportThis, "SearchPredicate"),
+				jen.Id("spec").Op("*").Qual(ImportThis, "HistogramSpec"),
+			).Params(
+				jen.Op("*").Qual(ImportThis, "HistogramResult"),
+				jen.Error(),
+			))
+
+	})
+
+}
+
 // addAssociateHandlers registers a StatementHandler for handling Associate implementations in the provided HandlerEntries.
 func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
@@ -332,6 +364,7 @@ func NewDataRegistry() gen.Registry {
 	he = addBaseHandlers(he)
 	he = addCrudHandlers(he)
 	he = addSearchHandlers(he)
+	he = addSearchHistogramHandlers(he)
 	he = addAssociateHandlers(he)
 	he = addFilterKeysHandlers(he)
 	he = addListByAssociatedKeyHandlers(he)

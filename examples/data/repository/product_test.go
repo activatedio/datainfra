@@ -40,6 +40,15 @@ func TestProductRepository_Search(t *testing.T) {
 									a.Len(got.List, 2)
 								},
 							},
+							"empty-criteria-lists-all": {
+								Arrange: func(ctx context.Context) (context.Context, []*data.SearchPredicate) {
+									return ctx, nil
+								},
+								Assert: func(got *data.List[*data.SearchResult[*model.Product]], err error) {
+									r.NoError(err)
+									a.Len(got.List, 4)
+								},
+							},
 						}
 					case "postgres":
 						return map[string]*datatesting.SearchTestFixtureEntry[*model.Product]{
@@ -56,6 +65,15 @@ func TestProductRepository_Search(t *testing.T) {
 								Assert: func(got *data.List[*data.SearchResult[*model.Product]], err error) {
 									r.NoError(err)
 									a.Len(got.List, 2)
+								},
+							},
+							"empty-criteria-lists-all": {
+								Arrange: func(ctx context.Context) (context.Context, []*data.SearchPredicate) {
+									return ctx, nil
+								},
+								Assert: func(got *data.List[*data.SearchResult[*model.Product]], err error) {
+									r.NoError(err)
+									a.Len(got.List, 4)
 								},
 							},
 						}

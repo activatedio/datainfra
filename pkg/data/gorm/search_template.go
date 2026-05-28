@@ -129,14 +129,12 @@ type SearchTemplateParams[E any] struct {
 }
 
 // Search applies every supplied predicate as an AND-combined WHERE clause
-// using the registered binder for each predicate name. Returns an error
-// when no criteria are supplied or when any predicate name is not
-// registered.
+// using the registered binder for each predicate name. An empty criteria
+// slice is treated as "no filter" — the query degenerates to a paginated
+// list of every row, matching the natural REST semantics of a search
+// request with no constraints. Returns an error only when a predicate
+// name is not registered.
 func (c *searchTemplateImpl[E, I]) Search(ctx context.Context, criteria []*data.SearchPredicate, pageParams *data.PageParams) (*data.List[*data.SearchResult[E]], error) {
-
-	if len(criteria) == 0 {
-		return nil, errors.New("at least one search predicate is required")
-	}
 
 	got, err := c.template.DoList(ctx, func(tx *gorm.DB) *gorm.DB {
 		for _, p := range criteria {

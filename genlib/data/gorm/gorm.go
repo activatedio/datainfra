@@ -742,6 +742,113 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 	})
 }
 
+// hasGormHistogram reports whether the entry has a non-nil gorm.Histogram
+// configured on its gorm.Implementation. The stub handler keys off the
+// inverse so entries that opt into data.SearchHistogram without also
+// configuring gorm.Histogram keep returning the historical error.
+func hasGormHistogram(d *data.Entry) bool {
+	if !data.HasImplementation[Implementation](d) {
+		return false
+	}
+	return data.GetImplementation[Implementation](d).Histogram != nil
+}
+
+// addSearchHistogramStubHandlers emits an Unimplemented-stub
+// SearchHistogram method on the gorm repository impl when the entry
+// has the data.SearchHistogram marker but no gorm.Histogram
+// configuration. Callers that want real Postgres-backed histograms set
+// gorm.Histogram{DateColumn: ...} on the entry's gorm.Implementation;
+// see addSearchHistogramHandlers.
+func addSearchHistogramStubHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
+
+	return he.AddFileHandler(gen.NewKeyWithTest[*FileMain](func(in *FileMain) bool {
+		return data.HasImplementation[data.SearchHistogram](in.Entry) && !hasGormHistogram(in.Entry)
+	}), func(f *jen.File, _ gen.Registry, entry any) {
+
+		fm := entry.(*FileMain)
+		jh := fm.Entry.GetJenHelper()
+
+		implName := strcase.ToLowerCamel(jh.StructName) + "RepositoryImpl"
+
+		f.Func().Params(jen.Id("r").Op("*").Id(implName)).Id("SearchHistogram").
+			Params(
+				jen.Id("_").Add(data.QualCtx),
+				jen.Id("_").Op("[]*").Qual(data.ImportThis, "SearchPredicate"),
+				jen.Id("_").Op("*").Qual(data.ImportThis, "HistogramSpec"),
+			).
+			Params(
+				jen.Op("*").Qual(data.ImportThis, "HistogramResult"),
+				jen.Error(),
+			).
+			Block(
+				jen.Return(
+					jen.Nil(),
+					jen.Qual("fmt", "Errorf").Call(jen.Lit("SearchHistogram requires the Elasticsearch backend; gorm backend does not yet support date-histogram aggregations")),
+				),
+			)
+	})
+
+}
+
+// addSearchHistogramHandlers wires a real Postgres-backed
+// SearchHistogram method into the generated gorm repository when the
+// entry sets a non-nil gorm.Histogram on its gorm.Implementation. The
+// emitted impl struct embeds data.SearchHistogramTemplate[*Model] and
+// the constructor wires it via gorm.NewMappingHistogramTemplate,
+// reusing gorm.Search bindings so predicate filters match Search.
+// SQLite (and any non-Postgres dialect) returns an error at runtime
+// from the template.
+func addSearchHistogramHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
+
+	return he.AddStatementHandler(gen.NewKeyWithTest[*ImplFields](func(in *ImplFields) bool {
+		return data.HasImplementation[data.SearchHistogram](in.Entry) && hasGormHistogram(in.Entry)
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
+
+		_if := entry.(*ImplFields)
+		d := _if.Entry
+		jh := d.GetJenHelper()
+
+		return s.Add(jen.Qual(data.ImportThis, "SearchHistogramTemplate").Types(
+			jen.Op("*").Add(jh.StructType),
+		))
+
+	}).AddStatementHandler(gen.NewKeyWithTest[*ImplFieldAssignments](func(in *ImplFieldAssignments) bool {
+		return data.HasImplementation[data.SearchHistogram](in.Entry) && hasGormHistogram(in.Entry)
+	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
+
+		_if := entry.(*ImplFieldAssignments)
+		d := _if.Entry
+		jh := d.GetJenHelper()
+
+		hist := data.GetImplementation[Implementation](d).Histogram
+
+		var bindings jen.Code
+		if data.HasImplementation[Search](d) {
+			gs := data.GetImplementation[Search](d)
+			if len(gs.Bindings) == 0 {
+				bindings = jen.Nil()
+			} else {
+				bindings = generateSearchBindings(gs.Bindings)
+			}
+		} else {
+			bindings = jen.Nil()
+		}
+
+		internalName := jh.StructName + "Internal"
+		return s.Add(jen.Id("SearchHistogramTemplate").Op(":").Qual(ImportThis, "NewMappingHistogramTemplate").Types(
+			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
+		).Params(jen.Qual(ImportThis, "MappingHistogramTemplateParams").Types(
+			jen.Op("*").Add(jh.StructType), jen.Op("*").Qual("", internalName),
+		).Block(
+			jen.Id("Template").Op(":").Id("template").Op(","),
+			jen.Id("Bindings").Op(":").Add(bindings).Op(","),
+			jen.Id("DateColumn").Op(":").Lit(hist.DateColumn).Op(","),
+		)).Op(","))
+
+	})
+
+}
+
 // NewDataRegistry initializes a new genlib.Registry with predefined sets of handler entries for various operations.
 func NewDataRegistry() gen.Registry {
 
@@ -750,6 +857,8 @@ func NewDataRegistry() gen.Registry {
 	he = addBaseHandlers(he)
 	he = addCrudHandlers(he)
 	he = addSearchHandlers(he)
+	he = addSearchHistogramStubHandlers(he)
+	he = addSearchHistogramHandlers(he)
 	he = addAssociateHandlers(he)
 	he = addFilterKeysHandlers(he)
 	he = addListByAssociatedKeyHandlers(he)
