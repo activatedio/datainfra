@@ -158,9 +158,8 @@ func (g *gormSetup) createUser() error {
 	if tx.Error != nil {
 		if errors.Is(tx.Error, gorm.ErrRecordNotFound) {
 			log.Info().Msg("role not found, creating")
-			tx = g.db.Exec(fmt.Sprintf("CREATE USER %s WITH PASSWORD '%s'", g.appConfig.Username, g.appConfig.Password))
-			if tx.Error != nil {
-				return tx.Error
+			if err := datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("CREATE USER %s WITH PASSWORD '%s'", g.appConfig.Username, g.appConfig.Password)); err != nil {
+				return err
 			}
 			log.Info().Msg("created role")
 		} else {
@@ -188,9 +187,8 @@ func (g *gormSetup) dropUser() error {
 		}
 		return tx.Error
 	}
-	tx = g.db.Exec(fmt.Sprintf("DROP USER %s", g.appConfig.Username))
-	if tx.Error != nil {
-		return tx.Error
+	if err := datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("DROP USER %s", g.appConfig.Username)); err != nil {
+		return err
 	}
 	log.Info().Msg("dropped role")
 
@@ -228,9 +226,7 @@ func (g *gormSetup) createDatabase() error {
 
 	log.Info().Msg("creating database")
 
-	tx := g.db.Exec(fmt.Sprintf("CREATE DATABASE %s", g.appConfig.Name))
-
-	return tx.Error
+	return datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("CREATE DATABASE %s", g.appConfig.Name))
 }
 
 // dropDatabase drops the specified database if it exists and terminates active connections to it. Returns an error if any operation fails.
@@ -253,9 +249,8 @@ func (g *gormSetup) dropDatabase() error {
 	if tx.Error != nil {
 		return tx.Error
 	}
-	tx = g.db.Exec(fmt.Sprintf("DROP DATABASE %s", g.appConfig.Name))
-	if tx.Error != nil {
-		return tx.Error
+	if err := datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("DROP DATABASE %s", g.appConfig.Name)); err != nil {
+		return err
 	}
 	log.Info().Msg("dropped database")
 
@@ -266,8 +261,7 @@ func (g *gormSetup) dropDatabase() error {
 func (g *gormSetup) grantAllToDatabase() error {
 
 	log.Info().Msg("granting all on database")
-	tx := g.db.Exec(fmt.Sprintf("GRANT ALL PRIVILEGES ON DATABASE %s TO  %s", g.appConfig.Name, g.appConfig.Username))
-	return tx.Error
+	return datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("GRANT ALL PRIVILEGES ON DATABASE %s TO  %s", g.appConfig.Name, g.appConfig.Username))
 
 }
 
@@ -297,9 +291,8 @@ func (g *gormSetup) grantAllToSchema() error {
 	}
 
 	for _, stmt := range stmts {
-		tx := db.Exec(stmt)
-		if tx.Error != nil {
-			return tx.Error
+		if err := datagorm.ExecWithSerializationRetry(db, stmt); err != nil {
+			return err
 		}
 	}
 

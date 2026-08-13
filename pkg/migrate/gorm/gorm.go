@@ -82,14 +82,43 @@ func (m *migrator) Migrate(ctx context.Context) error {
 			return fmt.Errorf("failed to create goose provider for %q: %w", d.Name, err)
 		}
 		migStart := time.Now()
-		if _, err = provider.Up(ctx); err != nil {
-			return fmt.Errorf("migration %q failed: %w", d.Name, err)
+		if err := upWithRetry(ctx, provider, d.Name); err != nil {
+			return err
 		}
 		log.Info().Str("component", "gorm").Str("dialect", m.config.Dialect).Str("database", m.config.Name).Str("name", d.Name).Str("duration", time.Since(migStart).String()).Msg("migration set complete")
 	}
 
 	return nil
 
+}
+
+// upWithRetry runs provider.Up, retrying with linear backoff while the
+// failure is a retryable serialization error (SQLSTATE 40001 —
+// YugabyteDB's "Restart read required" under concurrent DDL, postgres
+// serialization_failure under SERIALIZABLE). goose applies migrations
+// incrementally and transactionally, so re-running Up resumes at the first
+// unapplied migration.
+func upWithRetry(ctx context.Context, provider *goose.Provider, name string) error {
+	const (
+		attempts = 5
+		baseWait = 200 * time.Millisecond
+	)
+	var err error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if _, err = provider.Up(ctx); err == nil {
+			return nil
+		}
+		if !datagorm.IsSerializationFailure(err) {
+			break
+		}
+		log.Warn().Str("component", "gorm").Str("name", name).Int("attempt", attempt).Err(err).Msg("retrying migration set after serialization failure")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Duration(attempt) * baseWait):
+		}
+	}
+	return fmt.Errorf("migration %q failed: %w", name, err)
 }
 
 // MigratorParams defines the dependencies required to initialize a database migrator, including configuration and migration data.
