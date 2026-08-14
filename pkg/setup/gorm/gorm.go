@@ -58,6 +58,17 @@ func (g *gormSetup) setupPostgres(params setup.Params) error {
 		return nil
 	}
 
+	// When the app connects as the owner itself there is no separate role
+	// to create and nothing to grant — self-grants are no-ops, and on
+	// YugabyteDB every role/grant statement is a global-impact DDL that
+	// bumps all databases' catalog versions (aborting concurrent
+	// transactions with SQLSTATE 40001). Skipping them keeps CREATE
+	// DATABASE as the only global DDL of a setup run.
+	if g.appIsOwner() {
+		log.Info().Msg("app user is the owner; skipping user creation and grants")
+		return g.createDatabase()
+	}
+
 	if err = g.createUser(); err != nil {
 		return err
 	}
@@ -71,6 +82,13 @@ func (g *gormSetup) setupPostgres(params setup.Params) error {
 		return err
 	}
 	return nil
+}
+
+// appIsOwner reports whether the application connects as the owner role
+// itself, in which case user creation, grants, and user teardown are
+// skipped.
+func (g *gormSetup) appIsOwner() bool {
+	return g.appConfig.Username == g.ownerConfig.Username
 }
 
 // Setup initializes the database based on the specified parameters and the configured dialect in ownerConfig.
@@ -106,8 +124,12 @@ func (g *gormSetup) teardownPostgres() error {
 	if err := g.dropDatabase(); err != nil {
 		return err
 	}
-	if err := g.dropUser(); err != nil {
-		return err
+	// Never drop the owner role out from under ourselves when the app
+	// connects as the owner (see appIsOwner in setupPostgres).
+	if !g.appIsOwner() {
+		if err := g.dropUser(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
