@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/activatedio/datainfra/pkg/data"
 	dgorm "github.com/activatedio/datainfra/pkg/data/gorm"
@@ -19,9 +20,9 @@ import (
 // runtime wrapper TestableBucketSpec defined alongside it.
 func TestPostgresBucketSpec_AllUnits(t *testing.T) {
 	cases := []struct {
-		name           string
-		interval       data.HistogramInterval
-		wantTruncExpr  string
+		name            string
+		interval        data.HistogramInterval
+		wantTruncExpr   string
 		wantIntervalSQL string
 	}{
 		{
@@ -77,7 +78,7 @@ func TestPostgresBucketSpec_AllUnits(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			truncExpr, intervalSQL, err := dgorm.TestablePostgresBucketSpec(tt.interval, "created_at")
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.wantTruncExpr, truncExpr)
 			assert.Equal(t, tt.wantIntervalSQL, intervalSQL)
 		})
@@ -86,7 +87,7 @@ func TestPostgresBucketSpec_AllUnits(t *testing.T) {
 
 func TestPostgresBucketSpec_UnsupportedUnit(t *testing.T) {
 	_, _, err := dgorm.TestablePostgresBucketSpec(data.HistogramInterval{Unit: 99}, "created_at")
-	assert.Error(t, err)
+	require.Error(t, err)
 }
 
 // TestPostgresAlignExpr mirrors TestPostgresBucketSpec_AllUnits for the

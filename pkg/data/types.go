@@ -177,11 +177,11 @@ type SearchHistogramTemplate[E any] interface {
 // not enforced — callers can pass them in either order and the
 // resolver will use the absolute duration. When min == max the
 // resolver returns the smallest unit (Minute, step 1).
-func ResolveAutoInterval(min, max time.Time, targetBuckets int) HistogramInterval {
+func ResolveAutoInterval(lo, hi time.Time, targetBuckets int) HistogramInterval {
 	if targetBuckets <= 0 {
 		targetBuckets = 50
 	}
-	d := max.Sub(min)
+	d := hi.Sub(lo)
 	if d < 0 {
 		d = -d
 	}

@@ -248,7 +248,7 @@ func addSearchHistogramHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
 	return he.AddStatementHandler(gen.NewKeyWithTest[*InterfaceMethods](func(in *InterfaceMethods) bool {
 		return HasImplementation[SearchHistogram](in.Entry)
-	}), func(s *jen.Statement, _ gen.Registry, entry any) *jen.Statement {
+	}), func(s *jen.Statement, _ gen.Registry, _ any) *jen.Statement {
 
 		return s.Add(
 			jen.Id("SearchHistogram").Params(

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/activatedio/datainfra/pkg/data"
 )
 
@@ -94,16 +96,9 @@ func (c *histogramTemplateImpl[E, I]) SearchHistogram(
 	inner = inner.Where(fmt.Sprintf("%s >= ?", c.dateColumn), spec.Min).
 		Where(fmt.Sprintf("%s <= ?", c.dateColumn), spec.Max)
 
-	for _, p := range criteria {
-		b, ok := c.bindingsMap[p.Name]
-		if !ok {
-			return nil, fmt.Errorf("%w: %q", ErrUnknownSearchPredicate, p.Name)
-		}
-		next, bindErr := b.Binder(inner, p)
-		if bindErr != nil {
-			return nil, bindErr
-		}
-		inner = next
+	inner, err = c.applyCriteria(inner, criteria)
+	if err != nil {
+		return nil, err
 	}
 	inner = inner.Select(fmt.Sprintf("%s AS bucket_key", truncExpr))
 
@@ -130,6 +125,23 @@ func (c *histogramTemplateImpl[E, I]) SearchHistogram(
 		ResolvedInterval: resolved,
 		Buckets:          buckets,
 	}, nil
+}
+
+// applyCriteria runs every criterion through its predicate binding,
+// mirroring Search's filter semantics.
+func (c *histogramTemplateImpl[E, I]) applyCriteria(inner *gorm.DB, criteria []*data.SearchPredicate) (*gorm.DB, error) {
+	for _, p := range criteria {
+		b, ok := c.bindingsMap[p.Name]
+		if !ok {
+			return nil, fmt.Errorf("%w: %q", ErrUnknownSearchPredicate, p.Name)
+		}
+		next, bindErr := b.Binder(inner, p)
+		if bindErr != nil {
+			return nil, bindErr
+		}
+		inner = next
+	}
+	return inner, nil
 }
 
 // postgresBucketSpec returns the SQL expression that maps a timestamp
@@ -159,8 +171,11 @@ func postgresBucketSpec(ri data.HistogramInterval, column string) (truncExpr, in
 		return fmt.Sprintf("date_trunc('week', %s)", column), "1 week", nil
 	case data.HistogramIntervalMonth:
 		return fmt.Sprintf("date_trunc('month', %s)", column), "1 month", nil
+	default:
+		// HistogramIntervalAuto must be resolved by the caller before
+		// bucket-spec computation.
+		return "", "", fmt.Errorf("unsupported histogram interval unit %d", ri.Unit)
 	}
-	return "", "", fmt.Errorf("unsupported histogram interval unit %d", ri.Unit)
 }
 
 // postgresAlignExpr returns the bucket-aligned expression for a bound
@@ -187,7 +202,7 @@ func postgresAlignExpr(ri data.HistogramInterval, placeholder string) string {
 		return fmt.Sprintf("date_trunc('week', %s)", placeholder)
 	case data.HistogramIntervalMonth:
 		return fmt.Sprintf("date_trunc('month', %s)", placeholder)
+	default:
+		return placeholder
 	}
-	return placeholder
 }
-
