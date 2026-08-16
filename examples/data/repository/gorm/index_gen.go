@@ -3,9 +3,8 @@
 package gorm
 
 import (
-	fx "go.uber.org/fx"
-
 	gorm "github.com/activatedio/datainfra/pkg/data/gorm"
+	fx "go.uber.org/fx"
 )
 
 // Index collects constructors for implementations in an fx module

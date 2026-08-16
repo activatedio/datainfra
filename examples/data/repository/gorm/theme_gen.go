@@ -3,12 +3,11 @@
 package gorm
 
 import (
-	fx "go.uber.org/fx"
-
 	model "github.com/activatedio/datainfra/examples/data/model"
 	repository "github.com/activatedio/datainfra/examples/data/repository"
 	data "github.com/activatedio/datainfra/pkg/data"
 	gorm "github.com/activatedio/datainfra/pkg/data/gorm"
+	fx "go.uber.org/fx"
 )
 
 // ThemeInternal is the internal representation of Theme
