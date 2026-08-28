@@ -3,6 +3,8 @@ package gorm
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -134,6 +136,62 @@ func (g *gormSetup) teardownPostgres() error {
 	return nil
 }
 
+// teardownSqlite deletes the database file, plus the -wal and -shm sidecars
+// SQLite may have written beside it.
+//
+// This used to be a no-op ("no need to teardown sqlite"), which left every
+// caller leaking a file per fixture: Setup does not create the file (gorm does,
+// on first connect), but it is still the database this Setup was configured to
+// manage, and Teardown's contract is to destroy that database. For postgres
+// that means DROP DATABASE; for SQLite the database *is* the file, so removing
+// it is the same operation. A consumer running thousands of fixtures
+// accumulated hundreds of megabytes of /tmp files that nothing ever collected.
+//
+// A missing file is success, not an error — Teardown is routinely called
+// before Setup to clear a dirty slate (see TestSetup_Success), and on a
+// dialect where Setup is a no-op there may genuinely be nothing there.
+func (g *gormSetup) teardownSqlite() error {
+
+	name := g.appConfig.Name
+
+	// In-memory databases have no file. Both the bare form and the URI form
+	// ("file::memory:", "...?mode=memory") are in use in the wild, and
+	// os.Remove on either would be meaningless at best.
+	if name == "" || strings.Contains(name, ":memory:") || strings.Contains(name, "mode=memory") {
+		log.Info().Msg("sqlite database is in-memory, nothing to remove")
+		return nil
+	}
+
+	// A DSN can carry query parameters ("file.db?_pragma=..."); the file is
+	// the part before them.
+	path := name
+	if i := strings.IndexByte(path, '?'); i >= 0 {
+		path = path[:i]
+	}
+	path = strings.TrimPrefix(path, "file:")
+
+	log.Info().Str("database", path).Msg("removing sqlite database file")
+
+	// The sidecars are removed on a best-effort basis: their absence is the
+	// normal case (they exist only while a connection is open in WAL mode),
+	// so only the main file's failure is worth reporting.
+	for _, sidecar := range []string{path + "-wal", path + "-shm"} {
+		if err := os.Remove(sidecar); err != nil && !os.IsNotExist(err) {
+			log.Debug().Str("file", sidecar).Err(err).Msg("could not remove sqlite sidecar")
+		}
+	}
+
+	if err := os.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			log.Info().Str("database", path).Msg("sqlite database file does not exist, nothing to remove")
+			return nil
+		}
+		return errors.Wrapf(err, "removing sqlite database %q", path)
+	}
+
+	return nil
+}
+
 // Teardown cleans up resources based on the configured database dialect. Returns an error if the dialect is unknown.
 func (g *gormSetup) Teardown(_ context.Context) error {
 
@@ -144,8 +202,7 @@ func (g *gormSetup) Teardown(_ context.Context) error {
 	case "postgres":
 		err = g.teardownPostgres()
 	case "sqlite":
-		log.Info().Msg("no need to teardown sqlite")
-		return nil
+		err = g.teardownSqlite()
 	default:
 		return errors.Errorf("unknown Dialect %q", g.ownerConfig.Dialect)
 	}
