@@ -238,7 +238,14 @@ func (g *gormSetup) createUser() error {
 		if errors.Is(tx.Error, gorm.ErrRecordNotFound) {
 			log.Info().Msg("role not found, creating")
 			if err := datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("CREATE USER %s WITH PASSWORD '%s'", g.appConfig.Username, g.appConfig.Password)); err != nil {
-				return err
+				// The exists-check above is check-then-create: a concurrent
+				// bring-up against the same database target can win the race
+				// between the check and the CREATE. The role existing is the
+				// goal, not a failure.
+				if !datagorm.IsDuplicateObject(err) {
+					return err
+				}
+				log.Info().Msg("role was created concurrently by another bring-up")
 			}
 			log.Info().Msg("created role")
 		} else {
@@ -305,7 +312,16 @@ func (g *gormSetup) createDatabase() error {
 
 	log.Info().Msg("creating database")
 
-	return datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("CREATE DATABASE %s", g.appConfig.Name))
+	err := datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("CREATE DATABASE %s", g.appConfig.Name))
+	if err != nil && datagorm.IsDuplicateObject(err) {
+		// Setup's exists-check is check-then-create: a concurrent bring-up
+		// against the same database target can create it between the check
+		// and here. The database existing is the goal, not a failure.
+		log.Info().Msg("database was created concurrently by another bring-up")
+		return nil
+	}
+
+	return err
 }
 
 // dropDatabase drops the specified database if it exists and terminates active connections to it. Returns an error if any operation fails.
