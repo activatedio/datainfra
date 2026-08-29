@@ -27,6 +27,20 @@ const (
 )
 
 // NewDB creates and configures a new Gorm database instance based on the provided DBConfig.
+// postgresDSN renders the libpq keyword DSN, with TLS settings only when
+// configured so the driver defaults hold otherwise.
+func postgresDSN(config *Config) string {
+	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
+		config.Host, config.Port, config.Username, config.Password, config.Name)
+	if config.SSLMode != "" {
+		dsn += " sslmode=" + config.SSLMode
+	}
+	if config.SSLRootCert != "" {
+		dsn += " sslrootcert=" + config.SSLRootCert
+	}
+	return dsn
+}
+
 func NewDB(config *Config) (*gorm.DB, error) {
 
 	var dialector gorm.Dialector
@@ -35,8 +49,7 @@ func NewDB(config *Config) (*gorm.DB, error) {
 
 	case DialectPostgres:
 		dialector = postgres.New(postgres.Config{
-			DSN: fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
-				config.Host, config.Port, config.Username, config.Password, config.Name),
+			DSN: postgresDSN(config),
 		})
 	case DialectSqlite:
 		dialector = sqlite.Open(fmt.Sprintf("%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", config.Name))
