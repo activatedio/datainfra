@@ -41,6 +41,7 @@ func postgresDSN(config *Config) string {
 	return dsn
 }
 
+// NewDB opens a gorm connection for the configured dialect.
 func NewDB(config *Config) (*gorm.DB, error) {
 
 	var dialector gorm.Dialector
