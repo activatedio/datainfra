@@ -58,7 +58,7 @@ func Module(options Options) fx.Option {
 	return fx.Module("datainfra.bringup.gorm",
 		fx.Provide(
 			func(params readyParams) (*bringup.Ready, error) {
-				return newReady(options, params)
+				return Ready(options, params.Setup, params.Migrator)
 			},
 			NewDB,
 			NewSQLDB,
@@ -66,9 +66,12 @@ func Module(options Options) fx.Option {
 	)
 }
 
-// newReady runs the selected stages and returns the marker the pool depends
-// on.
-func newReady(options Options, params readyParams) (*bringup.Ready, error) {
+// Ready runs the selected stages and returns the marker the pool depends
+// on. It is exported for compositions the module shape cannot express — a
+// consumer whose bring-up is conditional on runtime configuration still runs
+// the stages through this one implementation rather than re-deriving the
+// ordering.
+func Ready(options Options, setupStage setup.Setup, migrator migrate.Migrator) (*bringup.Ready, error) {
 
 	timeout := options.Timeout
 	if timeout <= 0 {
@@ -79,21 +82,21 @@ func newReady(options Options, params readyParams) (*bringup.Ready, error) {
 	defer cancel()
 
 	if options.Setup {
-		if params.Setup == nil {
+		if setupStage == nil {
 			return nil, errors.New("bringup: options request setup but no setup.Setup is in the graph")
 		}
 		log.Info().Msg("bringup: running setup")
-		if err := params.Setup.Setup(ctx, setup.Params{}); err != nil {
+		if err := setupStage.Setup(ctx, setup.Params{}); err != nil {
 			return nil, fmt.Errorf("bringup: setup: %w", err)
 		}
 	}
 
 	if options.Migrate {
-		if params.Migrator == nil {
+		if migrator == nil {
 			return nil, errors.New("bringup: options request migrations but no migrate.Migrator is in the graph")
 		}
 		log.Info().Msg("bringup: running migrations")
-		if err := params.Migrator.Migrate(ctx); err != nil {
+		if err := migrator.Migrate(ctx); err != nil {
 			return nil, fmt.Errorf("bringup: migrate: %w", err)
 		}
 	}
