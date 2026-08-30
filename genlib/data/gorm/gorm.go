@@ -703,6 +703,21 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 			thisAssocatedKey := fmt.Sprintf("%s_%s", jh.TablePrefix, strcase.ToSnake(jh.Keys[0].Name))
 			otherAssocatedKey := fmt.Sprintf("%s_%s", jha.TablePrefix, strcase.ToSnake(jha.Keys[0].Name))
 
+			// When the edge table carries the scope column, constrain it too:
+			// a name-keyed edge is otherwise matched across every scope. Only
+			// declared edges get this — see ListByAssociatedKey.ScopedEdge for
+			// why it cannot be inferred.
+			edgeScope := jen.Return(jen.Id(txName))
+			if a.ScopedEdge {
+				edgeScope = jen.Return(receiverID().Dot("Template").
+					Dot("ApplyContextScopeQueryBuilderForTable").Call(
+					jen.Id(ctxName),
+					jen.Id(txName),
+					jen.Lit(assocatedTable),
+					jen.Qual(data.ImportThis, "FetchTypeList"),
+				))
+			}
+
 			f.Func().Params(receiverID().Op("*").Id(implName)).Id(fmt.Sprintf("ListBy%s", jha.StructName)).Params(
 				jen.Id(ctxName).Add(data.QualCtx),
 				jen.Id(keyName).Add(cka),
@@ -717,7 +732,8 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 					jen.Id(ctxName),
 					jen.Func().Params(
 						jen.Id(txName).Op("*").Qual(ImportGorm, "DB")).Params(jen.Op("*").Qual(ImportGorm, "DB")).Block(
-						jen.Return(jen.Id(txName).Dot("Joins").Call(jen.Lit(
+						// tx = tx.Joins(...).Where(<edge>.<otherKey>=?, key)
+						jen.Id(txName).Op("=").Id(txName).Dot("Joins").Call(jen.Lit(
 							fmt.Sprintf("INNER JOIN %s ON %s.%s = %s.%s",
 								assocatedTable,
 								assocatedTable,
@@ -732,7 +748,8 @@ func addListByAssociatedKeyHandlers(he *gen.HandlerEntries) *gen.HandlerEntries 
 							),
 						),
 							jen.Id(keyName),
-						)),
+						),
+						edgeScope,
 					),
 					jen.Id(paramsName),
 				),

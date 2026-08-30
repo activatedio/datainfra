@@ -66,6 +66,7 @@ func NewCategoryRepository(CategoryRepositoryParams) repository.CategoryReposito
 
 func (r *categoryRepositoryImpl) ListByProduct(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Category], error) {
 	return r.Template.DoList(ctx, func(tx *gorm1.DB) *gorm1.DB {
-		return tx.Joins("INNER JOIN product_categories ON product_categories.category_name = categories.name").Where("product_categories.product_sku=?", key)
+		tx = tx.Joins("INNER JOIN product_categories ON product_categories.category_name = categories.name").Where("product_categories.product_sku=?", key)
+		return tx
 	}, params)
 }

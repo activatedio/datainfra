@@ -106,6 +106,26 @@ type FilterKeys struct {
 type ListByAssociatedKey struct {
 	AssociatedType reflect.Type
 	Reversed       bool
+	// ScopedEdge declares that the edge table carries the entity's scope
+	// column, so the generated listing constrains the edge by scope as well
+	// as the entity.
+	//
+	// It matters only for edges keyed by NAMES. Names repeat across scopes, so
+	// without the constraint the join matches edge rows from every scope and
+	// pairs them with in-scope entity rows — the listing then reports
+	// associations made somewhere else, and it fails permissive (see kit#312:
+	// a provisioner that associates "the difference" computes an empty
+	// difference and ships a role granting nothing).
+	//
+	// Edges keyed by globally unique ids need nothing: an id already implies
+	// its scope, and those edge tables normally carry no scope column, so
+	// setting this would emit a predicate on a column that does not exist.
+	//
+	// Off by default, because turning it on for an edge table without the
+	// column is a hard SQL error. If an edge is name-keyed and has no scope
+	// column, this flag is not the fix — such a table cannot represent
+	// per-scope associations at all, and needs the column added.
+	ScopedEdge bool
 }
 
 // InterfaceMethods represents a type used for generating method definitions based on the associated `Entry` metadata.

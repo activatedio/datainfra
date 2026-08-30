@@ -104,6 +104,7 @@ func (r *productRepositoryImpl) AssociateCategories(ctx context.Context, key str
 }
 func (r *productRepositoryImpl) ListByCategory(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Product], error) {
 	return r.Template.DoList(ctx, func(tx *gorm1.DB) *gorm1.DB {
-		return tx.Joins("INNER JOIN product_categories ON product_categories.product_sku = products.sku").Where("product_categories.category_name=?", key)
+		tx = tx.Joins("INNER JOIN product_categories ON product_categories.product_sku = products.sku").Where("product_categories.category_name=?", key)
+		return tx
 	}, params)
 }

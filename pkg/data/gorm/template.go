@@ -24,6 +24,22 @@ type MappingTemplate[E any, I any] interface {
 	GetTable() string
 	// ApplyContextScopeQueryBuilder applies context-based query modifications to the database query.
 	ApplyContextScopeQueryBuilder(ctx context.Context, db *gorm.DB, fetchType data.FetchType) *gorm.DB
+
+	// ApplyContextScopeQueryBuilderForTable is ApplyContextScopeQueryBuilder
+	// against an explicitly named table rather than the entity's own.
+	//
+	// It exists for association queries. A ListBy<Associated> joins an edge
+	// table and filters it by the associated key, but the context scope was
+	// only ever applied to the entity's table — so the join matched edge rows
+	// from *any* scope and paired them with in-scope entity rows. Where the
+	// edge table carries the scope column (it is normally part of its primary
+	// key), applying the scope to it as well is what makes the association
+	// listing mean "associated *here*".
+	//
+	// The ContextScopeFactory already takes the table name and qualifies its
+	// predicate with it, so this needs no new information — only the chance to
+	// pass a different table.
+	ApplyContextScopeQueryBuilderForTable(ctx context.Context, db *gorm.DB, table string, fetchType data.FetchType) *gorm.DB
 	// ApplyContextScopeValueInjector applies context-based value injections to the provided internal entity.
 	ApplyContextScopeValueInjector(ctx context.Context, entry I, fetchType data.FetchType)
 	// DoFind performs a database query based on a delegate and returns a single mapped external entity or an error.
@@ -133,6 +149,18 @@ func (c *templateImpl[E, I]) ApplyContextScopeQueryBuilder(ctx context.Context, 
 		scopes = append(scopes, c.contextScope(ctx, c.table, fetchType).QueryModifier)
 	}
 	return db.Scopes(scopes...)
+}
+
+// ApplyContextScopeQueryBuilderForTable applies the context scope to table.
+// A no-op when the entity is unscoped, which is what keeps association
+// listings on unscoped entities unchanged.
+func (c *templateImpl[E, I]) ApplyContextScopeQueryBuilderForTable(ctx context.Context, db *gorm.DB,
+	table string, fetchType data.FetchType) *gorm.DB {
+
+	if c.contextScope == nil {
+		return db
+	}
+	return db.Scopes(c.contextScope(ctx, table, fetchType).QueryModifier)
 }
 
 // ApplyContextScopeValueInjector injects context-specific values into the provided entry based on fetch type and scope configuration.
