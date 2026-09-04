@@ -45,6 +45,8 @@ func (g *gormSetup) setupPostgres(params setup.Params) error {
 		return err
 	}
 
+	defer g.closeOwnerDB()
+
 	log.Info().Interface("appConfig", g.appConfig).Msg("setup")
 
 	exists, name, err := g.databaseExists()
@@ -120,6 +122,8 @@ func (g *gormSetup) teardownPostgres() error {
 	if err := g.init(g.ownerConfig); err != nil {
 		return err
 	}
+
+	defer g.closeOwnerDB()
 
 	log.Info().Interface("appConfig", g.appConfig).Msg("teardown")
 
@@ -222,6 +226,28 @@ func (g *gormSetup) init(cfg *datagorm.Config) error {
 	return nil
 }
 
+// closeOwnerDB releases the owner pool opened by init.
+//
+// Every Setup and every Teardown opens one, and until now none of them were
+// closed: a process standing up many fixtures leaked a pool — and its idle
+// connections — per call, against a server with a finite connection budget.
+// Failure to close is logged rather than returned, since it cannot change
+// whether the setup itself succeeded.
+func (g *gormSetup) closeOwnerDB() {
+	if g.db == nil {
+		return
+	}
+	sDB, err := g.db.DB()
+	if err != nil {
+		log.Warn().Err(err).Msg("could not reach the owner pool to close it")
+		return
+	}
+	if err := sDB.Close(); err != nil {
+		log.Warn().Err(err).Msg("could not close the owner pool")
+	}
+	g.db = nil
+}
+
 // PgRole represents a PostgreSQL role, typically used to define database users or groups of users.
 type PgRole struct {
 	Rolname string
@@ -307,21 +333,83 @@ func (g *gormSetup) databaseExists() (bool, string, error) {
 
 }
 
+// databaseDDLAttempts bounds the create/drop retry loops below. CREATE/DROP
+// DATABASE are not transactional on YugabyteDB, so a conflict can leave the
+// keyspace half-created and being cleaned up asynchronously; the loop is
+// waiting for that cleanup, which is quick but not instant.
+const databaseDDLAttempts = 6
+
+// databaseDDLBaseWait is the linear backoff step between attempts.
+const databaseDDLBaseWait = 250 * time.Millisecond
+
 // createDatabase creates a new database using the given name from the appConfig configuration.
+//
+// The loop exists because CREATE DATABASE is not transactional on
+// YugabyteDB. A read restart (SQLSTATE 40001) can be reported *after* the
+// DocDB keyspace has been created, with the catalog row rolled back —
+// ExecWithSerializationRetry then re-issues the statement and gets
+// "Keyspace 'x' already exists" (XX000) from the DocDB layer while
+// pg_database still has no row for it. Neither error means what it appears
+// to: the first is not "nothing happened" and the second is not "the
+// database is ready".
+//
+// So every failure is resolved by looking at pg_database rather than by
+// reading the error alone. The orphaned keyspace is reaped asynchronously,
+// which is what the backoff waits for.
+//
+// Observed under `go test ./...` at default parallelism, where a dozen
+// packages create their own test databases at once.
 func (g *gormSetup) createDatabase() error {
 
 	log.Info().Msg("creating database")
 
-	err := datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("CREATE DATABASE %s", g.appConfig.Name))
-	if err != nil && datagorm.IsDuplicateObject(err) {
-		// Setup's exists-check is check-then-create: a concurrent bring-up
-		// against the same database target can create it between the check
-		// and here. The database existing is the goal, not a failure.
-		log.Info().Msg("database was created concurrently by another bring-up")
-		return nil
+	var err error
+
+	for attempt := 1; attempt <= databaseDDLAttempts; attempt++ {
+
+		err = g.withDatabaseDDLLock(func() error {
+			return datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("CREATE DATABASE %s", g.appConfig.Name))
+		})
+
+		if err == nil {
+			return nil
+		}
+
+		if datagorm.IsDuplicateObject(err) {
+			// Setup's exists-check is check-then-create: a concurrent
+			// bring-up against the same database target can create it
+			// between the check and here. The database existing is the
+			// goal, not a failure.
+			log.Info().Msg("database was created concurrently by another bring-up")
+			return nil
+		}
+
+		if !datagorm.IsNamespaceExists(err) {
+			return err
+		}
+
+		// The keyspace exists but postgres may not know about it. Ask.
+		exists, _, checkErr := g.databaseExists()
+
+		if checkErr != nil {
+			return checkErr
+		}
+
+		if exists {
+			log.Info().Msg("database exists after a conflicting create; treating as created")
+			return nil
+		}
+
+		log.Warn().
+			Int("attempt", attempt).
+			Err(err).
+			Msg("keyspace exists but the database does not; waiting for the orphaned keyspace to be reaped")
+
+		time.Sleep(time.Duration(attempt) * databaseDDLBaseWait)
 	}
 
-	return err
+	return errors.Wrapf(err, "creating database %s: the keyspace kept reporting as existing while the database did not appear after %d attempts",
+		g.appConfig.Name, databaseDDLAttempts)
 }
 
 // dropDatabase drops the specified database if it exists and terminates active connections to it. Returns an error if any operation fails.
@@ -340,16 +428,55 @@ func (g *gormSetup) dropDatabase() error {
 	}
 	log.Info().Msg("database exists, dropping")
 
-	tx = g.db.Exec(fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '%s' AND leader_pid IS NULL", g.appConfig.Name))
-	if tx.Error != nil {
-		return tx.Error
-	}
-	if err := datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("DROP DATABASE %s", g.appConfig.Name)); err != nil {
-		return err
-	}
-	log.Info().Msg("dropped database")
+	var err error
 
-	return nil
+	// Mirror of createDatabase, for the same reason: DROP DATABASE is not
+	// transactional on YugabyteDB, so a conflict can be reported after the
+	// drop has taken effect. Re-issuing then reports the database as absent,
+	// which is the outcome the drop wanted, and a conflict that did NOT take
+	// effect is worth another attempt — so the state, not the error, decides.
+	for attempt := 1; attempt <= databaseDDLAttempts; attempt++ {
+
+		err = g.withDatabaseDDLLock(func() error {
+			// Terminate inside the lock and immediately before the drop:
+			// re-run per attempt because a client that reconnected between
+			// attempts would otherwise hold the drop off indefinitely.
+			if tx := g.db.Exec(fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '%s' AND leader_pid IS NULL", g.appConfig.Name)); tx.Error != nil {
+				return tx.Error
+			}
+			return datagorm.ExecWithSerializationRetry(g.db, fmt.Sprintf("DROP DATABASE %s", g.appConfig.Name))
+		})
+
+		if err == nil {
+			log.Info().Msg("dropped database")
+			return nil
+		}
+
+		if datagorm.IsUndefinedObject(err) {
+			log.Info().Msg("database was already gone")
+			return nil
+		}
+
+		exists, _, checkErr := g.databaseExists()
+
+		if checkErr != nil {
+			return checkErr
+		}
+
+		if !exists {
+			log.Info().Msg("database is gone after a conflicting drop; treating as dropped")
+			return nil
+		}
+
+		log.Warn().
+			Int("attempt", attempt).
+			Err(err).
+			Msg("drop database conflicted and the database is still present; retrying")
+
+		time.Sleep(time.Duration(attempt) * databaseDDLBaseWait)
+	}
+
+	return errors.Wrapf(err, "dropping database %s after %d attempts", g.appConfig.Name, databaseDDLAttempts)
 }
 
 // grantAllToDatabase grants all privileges on the specified database to the associated user defined in appConfig.
