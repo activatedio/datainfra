@@ -247,6 +247,44 @@ func TestPlanner(t *testing.T) {
 				require.Equal(t, 2, w.seedC.up)
 			},
 		},
+		"a test that comes back for a store it holds is re-planned under its own hold": {
+			arrange: func(t *testing.T) *world {
+				w := newWorld(t, true)
+				// One child test, two sequential apps: a loop over profiles or
+				// two datatesting.Run calls. The second must not queue behind
+				// the first's exclusive hold.
+				t.Run("run", func(t *testing.T) {
+					for i := 0; i < 2; i++ {
+						app := fxtest.New(t, fx.NopLogger, w.fix.GetApp(t, pristine).App)
+						app.RequireStart()
+						w.dirty(t)
+						app.RequireStop()
+					}
+					require.Equal(t, []string{"seed:a"}, w.rows(t)[:1])
+				})
+				return w
+			},
+			assert: func(t *testing.T, w *world) {
+				require.Equal(t, 1, w.schema.c.reset, "second ask reset the store the first phase dirtied")
+				require.Equal(t, 2, w.seedC.up)
+			},
+		},
+		"a shared holder asking for something else is refused, not deadlocked": {
+			arrange: func(t *testing.T) *world {
+				w := newWorld(t, true)
+				t.Run("run", func(t *testing.T) {
+					app := fxtest.New(t, fx.NopLogger, w.fix.GetApp(t, full).App)
+					app.RequireStart()
+					app.RequireStop()
+					second := fx.New(fx.NopLogger, w.fix.GetApp(t, pristine).App)
+					require.ErrorContains(t, second.Err(), "holds the store shared")
+				})
+				return w
+			},
+			assert: func(t *testing.T, w *world) {
+				require.Equal(t, 0, w.schema.c.reset)
+			},
+		},
 		"a dedicated store is dropped when its test ends": {
 			arrange: func(t *testing.T) *world {
 				w := newWorld(t, true)

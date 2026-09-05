@@ -68,7 +68,13 @@ func withDB(config *datagorm.Config, fn func(db *gorm.DB) error) error {
 	return fn(gdb)
 }
 
-func newProvider(config *datagorm.Config, db *gorm.DB, d MigratorData) (*goose.Provider, error) {
+// newProvider builds the goose provider for one set. versioned selects
+// goose's version table: the production migrator keeps it, because a
+// deployed database must remember what it has; a test layer disables it,
+// because the fixture's planner is the record of what a store carries, and
+// a version table that survived a Reset would tell goose the set is applied
+// when its rows are gone.
+func newProvider(config *datagorm.Config, db *gorm.DB, d MigratorData, versioned bool) (*goose.Provider, error) {
 	sdb, err := db.DB()
 	if err != nil {
 		return nil, err
@@ -83,6 +89,7 @@ func newProvider(config *datagorm.Config, db *gorm.DB, d MigratorData) (*goose.P
 	}
 	provider, err := goose.NewProvider(dialect, sdb, migFS,
 		goose.WithTableName(fmt.Sprintf("goose_migration_%s", d.Name)),
+		goose.WithDisableVersioning(!versioned),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create goose provider for %q: %w", d.Name, err)
@@ -130,7 +137,7 @@ type migrator struct {
 func (m *migrator) Migrate(ctx context.Context) error {
 	return withDB(m.config, func(db *gorm.DB) error {
 		for _, d := range m.data {
-			provider, err := newProvider(m.config, db, d)
+			provider, err := newProvider(m.config, db, d, true)
 			if err != nil {
 				return err
 			}
@@ -185,7 +192,7 @@ func (l *gooseLayer) Name() string { return l.data.Name }
 
 func (l *gooseLayer) Up(ctx context.Context) error {
 	return withDB(l.config, func(db *gorm.DB) error {
-		provider, err := newProvider(l.config, db, l.data)
+		provider, err := newProvider(l.config, db, l.data, false)
 		if err != nil {
 			return err
 		}
@@ -198,17 +205,22 @@ func (l *gooseLayer) Up(ctx context.Context) error {
 	})
 }
 
-// Down reverts the set to version zero through its `-- +goose Down`
-// sections, which NewGooseLayer verified are present in every file.
+// Down runs every file's `-- +goose Down` section, last file first. The
+// sections were verified present by NewGooseLayer. With versioning off goose
+// has no record of order to consult and its own DownTo walks the files
+// forward, so the layer applies each version itself, highest first.
 func (l *gooseLayer) Down(ctx context.Context) error {
 	return withDB(l.config, func(db *gorm.DB) error {
-		provider, err := newProvider(l.config, db, l.data)
+		provider, err := newProvider(l.config, db, l.data, false)
 		if err != nil {
 			return err
 		}
 		start := time.Now()
-		if _, err := provider.DownTo(ctx, 0); err != nil {
-			return fmt.Errorf("migration %q down failed: %w", l.data.Name, err)
+		sources := provider.ListSources()
+		for i := len(sources) - 1; i >= 0; i-- {
+			if _, err := provider.ApplyVersion(ctx, sources[i].Version, false); err != nil {
+				return fmt.Errorf("migration %q down failed at version %d: %w", l.data.Name, sources[i].Version, err)
+			}
 		}
 		logSet(l.config, l.data.Name, "down", start)
 		return nil

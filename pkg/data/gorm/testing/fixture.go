@@ -60,6 +60,12 @@ type appFixture struct {
 	applied []applied
 	dirty   bool
 	broken  error
+
+	// holders records which tests currently hold the store, and how. A test
+	// that runs several fixture apps in sequence — a loop over profiles, two
+	// datatesting.Run calls — comes back for the store it already holds; it
+	// must not queue behind itself.
+	holders map[*testing.T]datatesting.Tolerance
 }
 
 // Cleanup drops the database if it is still there. Per-test work never waits
@@ -169,11 +175,36 @@ func (a *appFixture) create(ctx context.Context) error {
 // acquire brings the store to req and holds it for the test: exclusively
 // for a Pristine test, shared for a Tolerant one. The hold is released by
 // t.Cleanup, which also records that the test may have written.
+//
+// A test already holding the store is served under its existing hold. With
+// an exclusive hold the store is re-planned in place — the test's earlier
+// phase is assumed to have written, so a pristine ask resets again. With a
+// shared hold nothing may be mutated, so the ask must match what the store
+// already carries.
 func (a *appFixture) acquire(t *testing.T, req datatesting.Requirement, stack []migrate.Layer) error {
 	ctx := context.Background()
 	target, err := resolve(req.Stack, stack)
 	if err != nil {
 		return fmt.Errorf("fixture %s: %w", a.name, err)
+	}
+
+	if held, ok := a.holding(t); ok {
+		switch {
+		case held == datatesting.Pristine:
+			a.markDirty()
+			if err := a.plan(ctx, target, req.Tolerance); err != nil {
+				a.stateMu.Lock()
+				a.broken = err
+				a.stateMu.Unlock()
+				return fmt.Errorf("fixture %s: %w", a.name, err)
+			}
+			return nil
+		case req.Tolerance == datatesting.Tolerant && a.carries(target):
+			return nil
+		default:
+			return fmt.Errorf("fixture %s: test %s holds the store shared and asks for %s with a different stack; "+
+				"one requirement per test, or ask for pristine up front", a.name, t.Name(), req.Tolerance)
+		}
 	}
 
 	for {
@@ -193,7 +224,9 @@ func (a *appFixture) acquire(t *testing.T, req datatesting.Requirement, stack []
 		}
 
 		if req.Tolerance == datatesting.Pristine {
+			a.hold(t, datatesting.Pristine)
 			t.Cleanup(func() {
+				a.release(t)
 				a.markDirty()
 				a.runMu.Unlock()
 			})
@@ -206,7 +239,9 @@ func (a *appFixture) acquire(t *testing.T, req datatesting.Requirement, stack []
 		a.runMu.Unlock()
 		a.runMu.RLock()
 		if a.carries(target) {
+			a.hold(t, datatesting.Tolerant)
 			t.Cleanup(func() {
+				a.release(t)
 				a.markDirty()
 				a.runMu.RUnlock()
 			})
@@ -214,6 +249,28 @@ func (a *appFixture) acquire(t *testing.T, req datatesting.Requirement, stack []
 		}
 		a.runMu.RUnlock()
 	}
+}
+
+func (a *appFixture) holding(t *testing.T) (datatesting.Tolerance, bool) {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	h, ok := a.holders[t]
+	return h, ok
+}
+
+func (a *appFixture) hold(t *testing.T, tol datatesting.Tolerance) {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	if a.holders == nil {
+		a.holders = map[*testing.T]datatesting.Tolerance{}
+	}
+	a.holders[t] = tol
+}
+
+func (a *appFixture) release(t *testing.T) {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	delete(a.holders, t)
 }
 
 // recoverIfBroken drops and recreates a store whose last plan failed
