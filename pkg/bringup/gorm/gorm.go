@@ -106,8 +106,26 @@ func Ready(options Options, setupStage setup.Setup, migrator migrate.Migrator) (
 
 // NewDB opens the pooled application connection once bring-up has finished.
 // It stands in for datagorm.NewDB purely to carry the ordering dependency.
-func NewDB(config *datagorm.Config, _ *bringup.Ready) (*gorm.DB, error) {
-	return datagorm.NewDB(config)
+// NewDB opens the ready-gated pool and closes it when the app stops. Closing
+// is not optional: a test process starts and stops many apps against one
+// server, and a pool that outlives its app holds its idle connections until
+// the process exits — enough of them and the server refuses the next test's
+// connection.
+func NewDB(lc fx.Lifecycle, config *datagorm.Config, _ *bringup.Ready) (*gorm.DB, error) {
+	db, err := datagorm.NewDB(config)
+	if err != nil {
+		return nil, err
+	}
+	lc.Append(fx.Hook{
+		OnStop: func(_ context.Context) error {
+			sdb, err := db.DB()
+			if err != nil {
+				return err
+			}
+			return sdb.Close()
+		},
+	})
+	return db, nil
 }
 
 // NewSQLDB unwraps the pool for consumers that speak database/sql rather

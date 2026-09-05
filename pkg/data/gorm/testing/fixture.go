@@ -19,76 +19,154 @@ import (
 	gormsetup "github.com/activatedio/datainfra/pkg/setup/gorm"
 )
 
-// appFixture is a struct that manages test application setup, state, and clean-up procedures for testing purposes.
+// appFixture is one database. It runs the lifecycle rings for every test that
+// borrows it, according to the Mode the test asked for:
+//
+//	ring 1  Setup + base MigrateUp     once per database (baseOnce)
+//	ring 2  delta MigrateUp            once (Reuse, Fresh) or per test (ReuseWithMigrate)
+//	        [test]
+//	ring 3  delta MigrateDown          per test, ReuseWithMigrate only, via t.Cleanup
+//	ring 4  Teardown                   via t.Cleanup (Fresh) or Cleanup at suite end (shared)
 type appFixture struct {
-	once     sync.Once
-	setupErr error
-	closer   func() error
-	name     string
-	opt      fx.Option
+	name string
+	opt  fx.Option
+
+	baseOnce sync.Once
+	baseErr  error
+	teardown func() error
+
+	// deltaOnce guards the one-shot delta of Reuse and Fresh. deltaMu
+	// serializes ReuseWithMigrate deltas on this database: it is held from
+	// Up until the test's Down has run.
+	deltaOnce sync.Once
+	deltaErr  error
+	deltaMu   sync.Mutex
+
+	// torn records that Teardown has run, so a Fresh fixture's suite-end
+	// Cleanup (if a caller registers one anyway) is a no-op.
+	tornMu sync.Mutex
+	torn   bool
 }
 
-// Cleanup releases resources associated with the appFixture by invoking the closer function, if it is not nil.
+// Cleanup drops the database if it is still there. Per-test rings never wait
+// for this; it is the suite-end drop of a shared database.
 func (a *appFixture) Cleanup() error {
-	if a.closer != nil {
-		return a.closer()
-	}
-	return nil
+	return a.runTeardown()
 }
 
-// InvokeParams provides dependencies for invocation, including setup and migration components via fx.In.
-type InvokeParams struct {
+func (a *appFixture) runTeardown() error {
+	a.tornMu.Lock()
+	defer a.tornMu.Unlock()
+	if a.torn || a.teardown == nil {
+		return nil
+	}
+	a.torn = true
+	return a.teardown()
+}
+
+// BaseParams is ring 1: provisioning and the base migrations.
+type BaseParams struct {
 	fx.In
 	Setup       setup.Setup
-	Migrator    migrate.Migrator
-	SetupParams *setup.Params `optional:"true"`
+	Migrator    migrate.Migrator `optional:"true"`
+	SetupParams *setup.Params    `optional:"true"`
 }
 
-// GetApp initializes a test application instance with provided dependencies and invokes setup, returning a result object.
-func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixtureResult {
+// DeltaParams is ring 2/3: the per-test reversible migrations, if the graph
+// has any.
+type DeltaParams struct {
+	fx.In
+	Delta migrate.Reversible `name:"delta" optional:"true"`
+}
 
-	invoke := make([]any, 0, 1)
+// GetApp returns the fx option for one test's app against this database. The
+// rings run inside the app's invokes, in registration order: base before
+// delta, and delta before anything the caller registers after this option.
+// Deltas may depend on the pool (they usually do: a bootstrap loader goes
+// through repositories); the base may not, since the database does not exist
+// until it has run. Keeping them in two invokes is what enforces that order.
+func (a *appFixture) GetApp(t *testing.T, mode datatesting.Mode, provide ...any) datatesting.AppFixtureResult {
 
-	invoke = append(invoke, func(ip InvokeParams) error {
-
-		sp := setup.Params{FailOnExisting: true}
-
-		if ip.SetupParams != nil {
-			sp = *ip.SetupParams
-		}
-
-		a.once.Do(func() {
-
+	base := func(bp BaseParams) error {
+		a.baseOnce.Do(func() {
 			ctx := context.Background()
-
-			if ip.Setup != nil {
-				log.Info().Msg("running setup")
-				setupStart := time.Now()
-				if err := ip.Setup.Setup(ctx, sp); err != nil {
-					a.setupErr = err
-					return
-				}
-				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(setupStart).String()).Msg("setup complete")
-				a.closer = func() error {
-					teardownStart := time.Now()
-					err := ip.Setup.Teardown(ctx)
-					log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(teardownStart).String()).Msg("teardown complete")
-					return err
-				}
+			sp := setup.Params{FailOnExisting: true}
+			if bp.SetupParams != nil {
+				sp = *bp.SetupParams
 			}
 
-			if ip.Migrator != nil {
+			log.Info().Str("fixture", a.name).Str("mode", mode.String()).Msg("running setup")
+			setupStart := time.Now()
+			if err := bp.Setup.Setup(ctx, sp); err != nil {
+				a.baseErr = err
+				return
+			}
+			a.teardown = func() error {
+				teardownStart := time.Now()
+				err := bp.Setup.Teardown(ctx)
+				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(teardownStart).String()).Msg("teardown complete")
+				return err
+			}
+			log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(setupStart).String()).Msg("setup complete")
+
+			// A fresh database belongs to this test: drop it when the
+			// test ends, whether it passed, failed or was skipped.
+			if mode == datatesting.ModeFresh {
+				t.Cleanup(func() {
+					if err := a.runTeardown(); err != nil {
+						t.Errorf("fixture %s: teardown: %v", a.name, err)
+					}
+				})
+			}
+
+			if bp.Migrator != nil {
 				migrateStart := time.Now()
-				if err := ip.Migrator.Migrate(ctx); err != nil {
-					a.setupErr = err
+				if err := bp.Migrator.Migrate(ctx); err != nil {
+					a.baseErr = err
 					return
 				}
 				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(migrateStart).String()).Msg("migration complete")
 			}
 		})
+		return a.baseErr
+	}
 
-		return a.setupErr
-	})
+	delta := func(dp DeltaParams) error {
+		if dp.Delta == nil {
+			return nil
+		}
+		ctx := context.Background()
+		switch mode {
+		case datatesting.ModeReuse, datatesting.ModeFresh:
+			a.deltaOnce.Do(func() {
+				a.deltaErr = a.deltaUp(ctx, dp.Delta)
+			})
+			return a.deltaErr
+		case datatesting.ModeReuseWithMigrate:
+			a.deltaMu.Lock()
+			if err := a.deltaUp(ctx, dp.Delta); err != nil {
+				// Up may have half-applied; give Down its chance before
+				// handing the database to the next test.
+				if derr := dp.Delta.Down(ctx); derr != nil {
+					log.Warn().Str("fixture", a.name).Err(derr).Msg("delta down after failed up")
+				}
+				a.deltaMu.Unlock()
+				return err
+			}
+			t.Cleanup(func() {
+				defer a.deltaMu.Unlock()
+				downStart := time.Now()
+				if err := dp.Delta.Down(ctx); err != nil {
+					t.Errorf("fixture %s: delta down: %v", a.name, err)
+					return
+				}
+				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(downStart).String()).Msg("delta down complete")
+			})
+			return nil
+		default:
+			return fmt.Errorf("fixture %s: unknown mode %d", a.name, mode)
+		}
+	}
 
 	app := fx.Module("test", a.opt,
 		fx.Provide(func(contextBuilder data.ContextBuilder, lc fx.Lifecycle) datatesting.ContextProvider {
@@ -101,8 +179,8 @@ func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixture
 			return cp
 		}, gormsetup.NewSetup, gormmigrate.NewMigrator),
 		fx.Provide(provide...),
-		// This is the test itself
-		fx.Invoke(invoke...),
+		fx.Invoke(base),
+		fx.Invoke(delta),
 	)
 
 	return datatesting.AppFixtureResult{
@@ -111,8 +189,21 @@ func (a *appFixture) GetApp(_ *testing.T, provide ...any) datatesting.AppFixture
 	}
 }
 
-// NewAppFixture creates a new AppFixture for testing, initializing it with a name and an fx.Option configuration.
-func NewAppFixture(name string, opt fx.Option) datatesting.AppFixture {
+func (a *appFixture) deltaUp(ctx context.Context, d migrate.Reversible) error {
+	start := time.Now()
+	if err := d.Up(ctx); err != nil {
+		return err
+	}
+	log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(start).String()).Msg("delta up complete")
+	return nil
+}
+
+// NewAppFixture creates a LifecycleFixture over one database, described by
+// the fx option: it must provide the *datagorm.Config, the
+// *gormsetup.OwnerGormConfig, the *gormmigrate.MigratorGormConfig and the
+// []gormmigrate.MigratorData of the base tier, and may provide a
+// migrate.Reversible tagged name:"delta".
+func NewAppFixture(name string, opt fx.Option) datatesting.LifecycleFixture {
 	return &appFixture{
 		name: fmt.Sprintf("gorm: %s", name),
 		opt:  opt,
