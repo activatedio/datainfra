@@ -27,11 +27,6 @@ type MigratorData struct {
 	Path string
 }
 
-type migrator struct {
-	config *datagorm.Config
-	data   []MigratorData
-}
-
 var dialectMap = map[string]goose.Dialect{
 	"postgres":   goose.DialectPostgres,
 	"pgx":        goose.DialectPostgres,
@@ -57,11 +52,11 @@ func dialectFromString(s string) (goose.Dialect, error) {
 }
 
 // withDB opens a pool for the duration of fn and closes it afterwards. A
-// migrator is invoked a handful of times per process; holding a pool open
-// between invocations would leak a connection per migrator, which is exactly
-// the kind of slow leak that exhausts a test database's connection slots.
-func (m *migrator) withDB(fn func(db *gorm.DB) error) error {
-	gdb, err := datagorm.NewDB(m.config)
+// migration runs a handful of times per process; holding a pool open between
+// runs would leak a connection per migrator, which is exactly the kind of
+// slow leak that exhausts a test database's connection slots.
+func withDB(config *datagorm.Config, fn func(db *gorm.DB) error) error {
+	gdb, err := datagorm.NewDB(config)
 	if err != nil {
 		return err
 	}
@@ -73,12 +68,12 @@ func (m *migrator) withDB(fn func(db *gorm.DB) error) error {
 	return fn(gdb)
 }
 
-func (m *migrator) provider(db *gorm.DB, d MigratorData) (*goose.Provider, error) {
+func newProvider(config *datagorm.Config, db *gorm.DB, d MigratorData) (*goose.Provider, error) {
 	sdb, err := db.DB()
 	if err != nil {
 		return nil, err
 	}
-	dialect, err := dialectFromString(m.config.Dialect)
+	dialect, err := dialectFromString(config.Dialect)
 	if err != nil {
 		return nil, err
 	}
@@ -93,59 +88,6 @@ func (m *migrator) provider(db *gorm.DB, d MigratorData) (*goose.Provider, error
 		return nil, fmt.Errorf("failed to create goose provider for %q: %w", d.Name, err)
 	}
 	return provider, nil
-}
-
-// Migrate applies every set, in order. It is the Migrator contract and is
-// identical to Up.
-func (m *migrator) Migrate(ctx context.Context) error {
-	return m.Up(ctx)
-}
-
-// Up applies every set, in order.
-func (m *migrator) Up(ctx context.Context) error {
-	return m.withDB(func(db *gorm.DB) error {
-		for _, d := range m.data {
-			provider, err := m.provider(db, d)
-			if err != nil {
-				return err
-			}
-			start := time.Now()
-			if err := upWithRetry(ctx, provider, d.Name); err != nil {
-				return err
-			}
-			m.logSet(d.Name, "up", start)
-		}
-		return nil
-	})
-}
-
-// Down reverts every set to version zero, in reverse order of application.
-// Sets without `-- +goose Down` sections are reverted as far as goose can
-// take them: the version rows go, the effects stay. NewDeltaMigrator refuses
-// such sets up front; NewMigrator (the base tier) never runs Down in the
-// lifecycle and accepts them.
-func (m *migrator) Down(ctx context.Context) error {
-	return m.withDB(func(db *gorm.DB) error {
-		for i := len(m.data) - 1; i >= 0; i-- {
-			d := m.data[i]
-			provider, err := m.provider(db, d)
-			if err != nil {
-				return err
-			}
-			start := time.Now()
-			if _, err := provider.DownTo(ctx, 0); err != nil {
-				return fmt.Errorf("migration %q down failed: %w", d.Name, err)
-			}
-			m.logSet(d.Name, "down", start)
-		}
-		return nil
-	})
-}
-
-func (m *migrator) logSet(name, direction string, start time.Time) {
-	log.Info().Str("component", "gorm").Str("dialect", m.config.Dialect).Str("database", m.config.Name).
-		Str("name", name).Str("direction", direction).Str("duration", time.Since(start).String()).
-		Msg("migration set complete")
 }
 
 func upWithRetry(ctx context.Context, provider *goose.Provider, name string) error {
@@ -171,16 +113,46 @@ func upWithRetry(ctx context.Context, provider *goose.Provider, name string) err
 	return fmt.Errorf("migration %q failed: %w", name, err)
 }
 
-// MigratorParams collects the base tier: the untagged []MigratorData.
+func logSet(config *datagorm.Config, name, direction string, start time.Time) {
+	log.Info().Str("component", "gorm").Str("dialect", config.Dialect).Str("database", config.Name).
+		Str("name", name).Str("direction", direction).Str("duration", time.Since(start).String()).
+		Msg("migration set complete")
+}
+
+// ---- production migrator -------------------------------------------------
+
+type migrator struct {
+	config *datagorm.Config
+	data   []MigratorData
+}
+
+// Migrate applies every set, in order.
+func (m *migrator) Migrate(ctx context.Context) error {
+	return withDB(m.config, func(db *gorm.DB) error {
+		for _, d := range m.data {
+			provider, err := newProvider(m.config, db, d)
+			if err != nil {
+				return err
+			}
+			start := time.Now()
+			if err := upWithRetry(ctx, provider, d.Name); err != nil {
+				return err
+			}
+			logSet(m.config, d.Name, "up", start)
+		}
+		return nil
+	})
+}
+
+// MigratorParams collects the production migration sets.
 type MigratorParams struct {
 	fx.In
 	Config *MigratorGormConfig
 	Data   []MigratorData
 }
 
-// NewMigrator builds the base-tier Migrator from the untagged []MigratorData
-// in the graph. It is applied once per database and never reverted by the
-// lifecycle, so its sets need no Down sections.
+// NewMigrator builds the production Migrator the bring-up module runs: every
+// []MigratorData set in the graph, applied in order, never reverted.
 func NewMigrator(params MigratorParams) migrate.Migrator {
 	return &migrator{
 		config: &params.Config.GormConfig,
@@ -188,46 +160,106 @@ func NewMigrator(params MigratorParams) migrate.Migrator {
 	}
 }
 
-// DeltaParams collects the delta tier: the []MigratorData tagged name:"delta".
-type DeltaParams struct {
-	fx.In
-	Config *MigratorGormConfig
-	Data   []MigratorData `name:"delta"`
+// ---- test layer ----------------------------------------------------------
+
+// GooseLayerOption configures NewGooseLayer.
+type GooseLayerOption func(*gooseLayer)
+
+// WithReset gives the layer a Reset: fn runs against a pool on the layer's
+// database and must return it to the state a fresh Up of this layer would
+// produce, with nothing above it applied. A schema layer typically issues
+// one TRUNCATE over the tables it created.
+func WithReset(fn func(ctx context.Context, db *gorm.DB) error) GooseLayerOption {
+	return func(l *gooseLayer) {
+		l.reset = fn
+	}
 }
 
-// DeltaResult is the delta-tier Reversible, tagged name:"delta" so the test
-// lifecycle can find it.
-type DeltaResult struct {
-	fx.Out
-	Delta migrate.Reversible `name:"delta"`
+type gooseLayer struct {
+	config *datagorm.Config
+	data   MigratorData
+	reset  func(ctx context.Context, db *gorm.DB) error
+}
+
+func (l *gooseLayer) Name() string { return l.data.Name }
+
+func (l *gooseLayer) Up(ctx context.Context) error {
+	return withDB(l.config, func(db *gorm.DB) error {
+		provider, err := newProvider(l.config, db, l.data)
+		if err != nil {
+			return err
+		}
+		start := time.Now()
+		if err := upWithRetry(ctx, provider, l.data.Name); err != nil {
+			return err
+		}
+		logSet(l.config, l.data.Name, "up", start)
+		return nil
+	})
+}
+
+// Down reverts the set to version zero through its `-- +goose Down`
+// sections, which NewGooseLayer verified are present in every file.
+func (l *gooseLayer) Down(ctx context.Context) error {
+	return withDB(l.config, func(db *gorm.DB) error {
+		provider, err := newProvider(l.config, db, l.data)
+		if err != nil {
+			return err
+		}
+		start := time.Now()
+		if _, err := provider.DownTo(ctx, 0); err != nil {
+			return fmt.Errorf("migration %q down failed: %w", l.data.Name, err)
+		}
+		logSet(l.config, l.data.Name, "down", start)
+		return nil
+	})
+}
+
+// resettableGooseLayer is a gooseLayer with a Reset. It is a separate type so
+// that only a layer given WithReset satisfies migrate.Resettable.
+type resettableGooseLayer struct {
+	*gooseLayer
+}
+
+func (l *resettableGooseLayer) Reset(ctx context.Context) error {
+	return withDB(l.config, func(db *gorm.DB) error {
+		start := time.Now()
+		if err := l.reset(ctx, db.WithContext(ctx)); err != nil {
+			return fmt.Errorf("migration %q reset failed: %w", l.data.Name, err)
+		}
+		logSet(l.config, l.data.Name, "reset", start)
+		return nil
+	})
 }
 
 var gooseDownMarker = regexp.MustCompile(`(?m)^\s*--\s*\+goose\s+Down\b`)
 
-// NewDeltaMigrator builds the delta-tier Reversible from goose sets. Every SQL
-// file in every set must carry a `-- +goose Down` section: goose treats a
-// missing section as an empty migration and silently leaves the effects in
-// place, which in the delta tier would leak one test's rows into the next.
-func NewDeltaMigrator(params DeltaParams) (DeltaResult, error) {
-	for _, d := range params.Data {
-		if err := requireDownSections(d); err != nil {
-			return DeltaResult{}, err
-		}
+// NewGooseLayer builds a test Layer from one goose set. Every SQL file in the
+// set must carry a `-- +goose Down` section: goose treats a missing section as
+// an empty migration and silently leaves the effects in place, which would
+// make Down a lie. A set that cannot be reversed cannot be a layer.
+func NewGooseLayer(config *MigratorGormConfig, data MigratorData, opts ...GooseLayerOption) (migrate.Layer, error) {
+	if err := requireDownSections(data); err != nil {
+		return nil, err
 	}
-	return DeltaResult{Delta: &migrator{
-		config: &params.Config.GormConfig,
-		data:   params.Data,
-	}}, nil
+	l := &gooseLayer{config: &config.GormConfig, data: data}
+	for _, o := range opts {
+		o(l)
+	}
+	if l.reset != nil {
+		return &resettableGooseLayer{l}, nil
+	}
+	return l, nil
 }
 
 func requireDownSections(d MigratorData) error {
 	sub, err := fs.Sub(d.FS, d.Path)
 	if err != nil {
-		return fmt.Errorf("delta set %q: %w", d.Name, err)
+		return fmt.Errorf("layer %q: %w", d.Name, err)
 	}
 	entries, err := fs.ReadDir(sub, ".")
 	if err != nil {
-		return fmt.Errorf("delta set %q: %w", d.Name, err)
+		return fmt.Errorf("layer %q: %w", d.Name, err)
 	}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
@@ -235,10 +267,10 @@ func requireDownSections(d MigratorData) error {
 		}
 		b, err := fs.ReadFile(sub, e.Name())
 		if err != nil {
-			return fmt.Errorf("delta set %q: %w", d.Name, err)
+			return fmt.Errorf("layer %q: %w", d.Name, err)
 		}
 		if !gooseDownMarker.Match(b) {
-			return fmt.Errorf("delta set %q: %s has no `-- +goose Down` section; delta migrations must be reversible",
+			return fmt.Errorf("layer %q: %s has no `-- +goose Down` section; every layer must state its exact reverse",
 				d.Name, path.Join(d.Path, e.Name()))
 		}
 	}

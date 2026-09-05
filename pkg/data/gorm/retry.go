@@ -132,17 +132,3 @@ func ExecWithSerializationRetry(db *gorm.DB, stmt string, args ...any) error {
 	}
 	return err
 }
-
-// IsForeignKeyViolation reports whether err is a foreign-key constraint
-// failure: SQLSTATE 23503 on postgres-wire databases (postgres, YugabyteDB),
-// or the sqlite driver's constraint message.
-func IsForeignKeyViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return pgErr.Code == "23503"
-	}
-	return strings.Contains(err.Error(), "FOREIGN KEY constraint failed")
-}

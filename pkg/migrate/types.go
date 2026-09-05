@@ -2,76 +2,53 @@ package migrate
 
 import "context"
 
-// Migrator applies a one-directional migration. It is the base tier of the
-// test lifecycle and the production bring-up stage: schema and any data a
-// database is expected to carry for its whole life.
+// Migrator applies a one-directional migration. It is the production
+// bring-up stage: what a deployed database is brought to, with no notion of
+// undoing it.
 type Migrator interface {
 	Migrate(ctx context.Context) error
 }
 
-// Reversible is a migration that can be undone. It is the delta tier of the
-// test lifecycle: whatever a single test applies on top of a shared base and
-// must leave no trace of afterwards. Down must restore the database to the
-// state Up found it in, and must be safe to call after a partially failed Up.
-type Reversible interface {
+// Layer is one migration unit in a test fixture's stack, with an exact
+// reverse. Layers stack in a fixed order declared by the fixture — schema,
+// then seed data, then a bootstrap — and a test names the layers it needs.
+//
+// Down must reverse exactly what Up did: a schema layer drops the tables it
+// created, a data layer deletes the rows it inserted, by key. Nothing here
+// is inferred from the database; each author states the reverse of their
+// own Up. A layer with no Down cannot be a Layer.
+type Layer interface {
+	Name() string
 	Up(ctx context.Context) error
 	Down(ctx context.Context) error
 }
 
-// Func adapts two functions to a Reversible. Either may be nil, in which case
-// that direction is a no-op.
-type Func struct {
-	UpFunc   func(ctx context.Context) error
-	DownFunc func(ctx context.Context) error
+// Resettable is the optional optimization a Layer may offer. Reset returns
+// the database to "this layer and everything below it are freshly applied,
+// nothing above is applied" — the same state Down-then-Up of this layer and
+// everything above would produce, without the DDL. The fixture then
+// re-applies the layers above.
+//
+// It is an optimization and only that: the fixture falls back to Down and
+// Up when a layer does not offer it. A schema layer typically implements it
+// as one TRUNCATE over an authored list of its tables.
+type Resettable interface {
+	Reset(ctx context.Context) error
 }
 
-func (f Func) Up(ctx context.Context) error {
-	if f.UpFunc == nil {
-		return nil
+// Keyed is the optional fingerprint of a parameterized Layer. Two instances
+// of the same layer name with different keys are different layers to the
+// fixture: a bootstrap that seeds test-specific data reports a key derived
+// from that data, so a test that needs a different seed gets the old one
+// reversed and its own applied.
+type Keyed interface {
+	Key() string
+}
+
+// KeyOf returns the layer's key, or "" for a layer without parameters.
+func KeyOf(l Layer) string {
+	if k, ok := l.(Keyed); ok {
+		return k.Key()
 	}
-	return f.UpFunc(ctx)
-}
-
-func (f Func) Down(ctx context.Context) error {
-	if f.DownFunc == nil {
-		return nil
-	}
-	return f.DownFunc(ctx)
-}
-
-// UpOnly lifts a Migrator into a Reversible whose Down does nothing. Use it
-// to place a one-directional migrator inside a Sequence whose undo is carried
-// by a later step (typically a table reset).
-func UpOnly(m Migrator) Reversible {
-	return Func{UpFunc: m.Migrate}
-}
-
-type sequence struct {
-	steps []Reversible
-}
-
-// Sequence composes Reversibles: Up runs the steps in order, Down runs every
-// step's Down in reverse order. Down does not stop at the first error — each
-// step gets its chance to undo — and returns the first error seen.
-func Sequence(steps ...Reversible) Reversible {
-	return &sequence{steps: steps}
-}
-
-func (s *sequence) Up(ctx context.Context) error {
-	for _, st := range s.steps {
-		if err := st.Up(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *sequence) Down(ctx context.Context) error {
-	var first error
-	for i := len(s.steps) - 1; i >= 0; i-- {
-		if err := s.steps[i].Down(ctx); err != nil && first == nil {
-			first = err
-		}
-	}
-	return first
+	return ""
 }

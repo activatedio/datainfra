@@ -19,37 +19,51 @@ import (
 	gormsetup "github.com/activatedio/datainfra/pkg/setup/gorm"
 )
 
-// appFixture is one database. It runs the lifecycle rings for every test that
-// borrows it, according to the Mode the test asked for:
+// applied is one layer the store currently carries, with the instance that
+// applied it — Down must go through that same instance, because a
+// parameterized layer's reverse depends on the parameters it was applied
+// with.
+type applied struct {
+	layer migrate.Layer
+	key   string
+}
+
+// appFixture is one database — a store — and the planner that brings it to
+// what each test requires.
 //
-//	ring 1  Setup + base MigrateUp     once per database (baseOnce)
-//	ring 2  delta MigrateUp            once (Reuse, Fresh) or per test (ReuseWithMigrate)
-//	        [test]
-//	ring 3  delta MigrateDown          per test, ReuseWithMigrate only, via t.Cleanup
-//	ring 4  Teardown                   via t.Cleanup (Fresh) or Cleanup at suite end (shared)
+// Every test runs through the same rings: Setup (once per store), MigrateUp
+// of the layers it lacks, the test, MigrateDown of what the next test does
+// not want, Teardown (dedicated stores when the test ends, shared ones at
+// suite end). What varies is the Requirement, and the planner turns the
+// store's recorded state plus the requirement into the cheapest exact plan.
 type appFixture struct {
 	name string
 	opt  fx.Option
 
-	baseOnce sync.Once
-	baseErr  error
-	teardown func() error
+	// setupOnce guards Setup. setupStage is kept so a broken store can be
+	// dropped and recreated.
+	setupOnce  sync.Once
+	setupErr   error
+	setupStage setup.Setup
+	setupParam setup.Params
+	teardown   func() error
 
-	// deltaOnce guards the one-shot delta of Reuse and Fresh. deltaMu
-	// serializes ReuseWithMigrate deltas on this database: it is held from
-	// Up until the test's Down has run.
-	deltaOnce sync.Once
-	deltaErr  error
-	deltaMu   sync.Mutex
-
-	// torn records that Teardown has run, so a Fresh fixture's suite-end
-	// Cleanup (if a caller registers one anyway) is a no-op.
 	tornMu sync.Mutex
 	torn   bool
+
+	// runMu is held exclusively while the planner mutates the store and for
+	// the duration of a Pristine test; Tolerant tests hold it shared.
+	runMu sync.RWMutex
+
+	// stateMu guards the recorded state below.
+	stateMu sync.Mutex
+	applied []applied
+	dirty   bool
+	broken  error
 }
 
-// Cleanup drops the database if it is still there. Per-test rings never wait
-// for this; it is the suite-end drop of a shared database.
+// Cleanup drops the database if it is still there. Per-test work never waits
+// for this; it is the suite-end drop of a shared store.
 func (a *appFixture) Cleanup() error {
 	return a.runTeardown()
 }
@@ -64,108 +78,51 @@ func (a *appFixture) runTeardown() error {
 	return a.teardown()
 }
 
-// BaseParams is ring 1: provisioning and the base migrations.
+// BaseParams is what Setup needs.
 type BaseParams struct {
 	fx.In
 	Setup       setup.Setup
-	Migrator    migrate.Migrator `optional:"true"`
-	SetupParams *setup.Params    `optional:"true"`
+	SetupParams *setup.Params `optional:"true"`
 }
 
-// DeltaParams is ring 2/3: the per-test reversible migrations, if the graph
-// has any.
-type DeltaParams struct {
+// StackParams is the fixture's declared stack, in order. Layers are
+// constructed after Setup has run, so they may depend on the pool.
+type StackParams struct {
 	fx.In
-	Delta migrate.Reversible `name:"delta" optional:"true"`
+	Stack []migrate.Layer
 }
 
-// GetApp returns the fx option for one test's app against this database. The
-// rings run inside the app's invokes, in registration order: base before
-// delta, and delta before anything the caller registers after this option.
-// Deltas may depend on the pool (they usually do: a bootstrap loader goes
-// through repositories); the base may not, since the database does not exist
-// until it has run. Keeping them in two invokes is what enforces that order.
-func (a *appFixture) GetApp(t *testing.T, mode datatesting.Mode, provide ...any) datatesting.AppFixtureResult {
+// GetApp returns the fx option for one test's app against this store. Setup
+// and the plan run inside the app's invokes, in registration order, before
+// anything the caller registers after this option.
+func (a *appFixture) GetApp(t *testing.T, req datatesting.Requirement, provide ...any) datatesting.AppFixtureResult {
 
 	base := func(bp BaseParams) error {
-		a.baseOnce.Do(func() {
-			ctx := context.Background()
-			sp := setup.Params{FailOnExisting: true}
+		a.setupOnce.Do(func() {
+			a.setupStage = bp.Setup
+			a.setupParam = setup.Params{FailOnExisting: true}
 			if bp.SetupParams != nil {
-				sp = *bp.SetupParams
+				a.setupParam = *bp.SetupParams
 			}
-
-			log.Info().Str("fixture", a.name).Str("mode", mode.String()).Msg("running setup")
-			setupStart := time.Now()
-			if err := bp.Setup.Setup(ctx, sp); err != nil {
-				a.baseErr = err
+			a.setupErr = a.create(context.Background())
+			if a.setupErr != nil {
 				return
 			}
-			a.teardown = func() error {
-				teardownStart := time.Now()
-				err := bp.Setup.Teardown(ctx)
-				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(teardownStart).String()).Msg("teardown complete")
-				return err
-			}
-			log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(setupStart).String()).Msg("setup complete")
-
-			// A fresh database belongs to this test: drop it when the
-			// test ends, whether it passed, failed or was skipped.
-			if mode == datatesting.ModeFresh {
+			// A dedicated store belongs to this test: drop it when the test
+			// ends, whether it passed, failed or was skipped.
+			if req.Dedicated {
 				t.Cleanup(func() {
 					if err := a.runTeardown(); err != nil {
 						t.Errorf("fixture %s: teardown: %v", a.name, err)
 					}
 				})
 			}
-
-			if bp.Migrator != nil {
-				migrateStart := time.Now()
-				if err := bp.Migrator.Migrate(ctx); err != nil {
-					a.baseErr = err
-					return
-				}
-				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(migrateStart).String()).Msg("migration complete")
-			}
 		})
-		return a.baseErr
+		return a.setupErr
 	}
 
-	delta := func(dp DeltaParams) error {
-		if dp.Delta == nil {
-			return nil
-		}
-		ctx := context.Background()
-		switch mode {
-		case datatesting.ModeReuse, datatesting.ModeFresh:
-			a.deltaOnce.Do(func() {
-				a.deltaErr = a.deltaUp(ctx, dp.Delta)
-			})
-			return a.deltaErr
-		case datatesting.ModeReuseWithMigrate:
-			a.deltaMu.Lock()
-			if err := a.deltaUp(ctx, dp.Delta); err != nil {
-				// Up may have half-applied; give Down its chance before
-				// handing the database to the next test.
-				if derr := dp.Delta.Down(ctx); derr != nil {
-					log.Warn().Str("fixture", a.name).Err(derr).Msg("delta down after failed up")
-				}
-				a.deltaMu.Unlock()
-				return err
-			}
-			t.Cleanup(func() {
-				defer a.deltaMu.Unlock()
-				downStart := time.Now()
-				if err := dp.Delta.Down(ctx); err != nil {
-					t.Errorf("fixture %s: delta down: %v", a.name, err)
-					return
-				}
-				log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(downStart).String()).Msg("delta down complete")
-			})
-			return nil
-		default:
-			return fmt.Errorf("fixture %s: unknown mode %d", a.name, mode)
-		}
+	stack := func(sp StackParams) error {
+		return a.acquire(t, req, sp.Stack)
 	}
 
 	app := fx.Module("test", a.opt,
@@ -177,10 +134,10 @@ func (a *appFixture) GetApp(t *testing.T, mode datatesting.Mode, provide ...any)
 				},
 			})
 			return cp
-		}, gormsetup.NewSetup, gormmigrate.NewMigrator),
+		}, gormsetup.NewSetup),
 		fx.Provide(provide...),
 		fx.Invoke(base),
-		fx.Invoke(delta),
+		fx.Invoke(stack),
 	)
 
 	return datatesting.AppFixtureResult{
@@ -189,20 +146,219 @@ func (a *appFixture) GetApp(t *testing.T, mode datatesting.Mode, provide ...any)
 	}
 }
 
-func (a *appFixture) deltaUp(ctx context.Context, d migrate.Reversible) error {
+// create provisions the database and records the teardown.
+func (a *appFixture) create(ctx context.Context) error {
+	log.Info().Str("fixture", a.name).Msg("running setup")
 	start := time.Now()
-	if err := d.Up(ctx); err != nil {
+	if err := a.setupStage.Setup(ctx, a.setupParam); err != nil {
 		return err
 	}
-	log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(start).String()).Msg("delta up complete")
+	a.teardown = func() error {
+		teardownStart := time.Now()
+		err := a.setupStage.Teardown(ctx)
+		log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(teardownStart).String()).Msg("teardown complete")
+		return err
+	}
+	a.tornMu.Lock()
+	a.torn = false
+	a.tornMu.Unlock()
+	log.Info().Str("component", "gorm").Str("fixture", a.name).Str("duration", time.Since(start).String()).Msg("setup complete")
 	return nil
+}
+
+// acquire brings the store to req and holds it for the test: exclusively
+// for a Pristine test, shared for a Tolerant one. The hold is released by
+// t.Cleanup, which also records that the test may have written.
+func (a *appFixture) acquire(t *testing.T, req datatesting.Requirement, stack []migrate.Layer) error {
+	ctx := context.Background()
+	target, err := resolve(req.Stack, stack)
+	if err != nil {
+		return fmt.Errorf("fixture %s: %w", a.name, err)
+	}
+
+	for {
+		a.runMu.Lock()
+
+		if err := a.recoverIfBroken(ctx); err != nil {
+			a.runMu.Unlock()
+			return fmt.Errorf("fixture %s: %w", a.name, err)
+		}
+
+		if err := a.plan(ctx, target, req.Tolerance); err != nil {
+			a.stateMu.Lock()
+			a.broken = err
+			a.stateMu.Unlock()
+			a.runMu.Unlock()
+			return fmt.Errorf("fixture %s: %w", a.name, err)
+		}
+
+		if req.Tolerance == datatesting.Pristine {
+			t.Cleanup(func() {
+				a.markDirty()
+				a.runMu.Unlock()
+			})
+			return nil
+		}
+
+		// Tolerant: downgrade to a shared hold. Another test may take the
+		// exclusive lock in the gap and change the stack, so re-check what
+		// we hold before trusting it.
+		a.runMu.Unlock()
+		a.runMu.RLock()
+		if a.carries(target) {
+			t.Cleanup(func() {
+				a.markDirty()
+				a.runMu.RUnlock()
+			})
+			return nil
+		}
+		a.runMu.RUnlock()
+	}
+}
+
+// recoverIfBroken drops and recreates a store whose last plan failed
+// part-way. The failing test already reported the error; this keeps one bad
+// Down from failing every test after it. Called with runMu held.
+func (a *appFixture) recoverIfBroken(ctx context.Context) error {
+	a.stateMu.Lock()
+	broken := a.broken
+	a.stateMu.Unlock()
+	if broken == nil {
+		return nil
+	}
+	log.Error().Str("fixture", a.name).Err(broken).Msg("store is broken from a failed migration step; dropping and recreating it")
+	if err := a.runTeardown(); err != nil {
+		return fmt.Errorf("recovering broken store: teardown: %w (broken by: %v)", err, broken)
+	}
+	if err := a.create(ctx); err != nil {
+		return fmt.Errorf("recovering broken store: setup: %w (broken by: %v)", err, broken)
+	}
+	a.stateMu.Lock()
+	a.applied = nil
+	a.dirty = false
+	a.broken = nil
+	a.stateMu.Unlock()
+	return nil
+}
+
+// plan brings the store from its recorded state to target. Called with runMu
+// held exclusively.
+//
+//  1. Find how many leading layers already match, by name and key.
+//  2. If the test needs pristine and the store is dirty: Reset the bottom
+//     layer if it can (discarding everything above), else Down everything.
+//  3. Down the applied layers above the match, top to bottom.
+//  4. Up the missing target layers, bottom to top.
+func (a *appFixture) plan(ctx context.Context, target []migrate.Layer, tolerance datatesting.Tolerance) error {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+
+	i := 0
+	for i < len(a.applied) && i < len(target) &&
+		a.applied[i].layer.Name() == target[i].Name() && a.applied[i].key == migrate.KeyOf(target[i]) {
+		i++
+	}
+
+	if tolerance == datatesting.Pristine && a.dirty {
+		if r, ok := a.applied[0].layer.(migrate.Resettable); i >= 1 && ok {
+			if err := a.step("reset", a.applied[0].layer, r.Reset); err != nil {
+				return err
+			}
+			a.applied = a.applied[:1]
+			i = 1
+		} else {
+			for j := len(a.applied) - 1; j >= 0; j-- {
+				if err := a.step("down", a.applied[j].layer, a.applied[j].layer.Down); err != nil {
+					return err
+				}
+				a.applied = a.applied[:j]
+			}
+			i = 0
+		}
+		a.dirty = false
+	}
+
+	for j := len(a.applied) - 1; j >= i; j-- {
+		if err := a.step("down", a.applied[j].layer, a.applied[j].layer.Down); err != nil {
+			return err
+		}
+		a.applied = a.applied[:j]
+	}
+
+	for j := i; j < len(target); j++ {
+		if err := a.step("up", target[j], target[j].Up); err != nil {
+			return err
+		}
+		a.applied = append(a.applied, applied{layer: target[j], key: migrate.KeyOf(target[j])})
+	}
+
+	return nil
+}
+
+func (a *appFixture) step(direction string, l migrate.Layer, fn func(context.Context) error) error {
+	start := time.Now()
+	if err := fn(context.Background()); err != nil {
+		return fmt.Errorf("layer %q %s: %w", l.Name(), direction, err)
+	}
+	log.Info().Str("component", "gorm").Str("fixture", a.name).Str("layer", l.Name()).Str("direction", direction).
+		Str("duration", time.Since(start).String()).Msg("layer step complete")
+	return nil
+}
+
+// carries reports whether the store's applied stack is exactly target.
+func (a *appFixture) carries(target []migrate.Layer) bool {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+	if a.broken != nil || len(a.applied) != len(target) {
+		return false
+	}
+	for i := range target {
+		if a.applied[i].layer.Name() != target[i].Name() || a.applied[i].key != migrate.KeyOf(target[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *appFixture) markDirty() {
+	a.stateMu.Lock()
+	a.dirty = true
+	a.stateMu.Unlock()
+}
+
+// resolve picks the requested layer names out of the declared stack, in
+// stack order. Nil means the whole stack. A name the stack does not declare,
+// or names out of stack order, is a test bug and fails loudly.
+func resolve(names []string, stack []migrate.Layer) ([]migrate.Layer, error) {
+	if names == nil {
+		return stack, nil
+	}
+	index := map[string]int{}
+	for i, l := range stack {
+		if _, dup := index[l.Name()]; dup {
+			return nil, fmt.Errorf("stack declares layer %q twice", l.Name())
+		}
+		index[l.Name()] = i
+	}
+	out := make([]migrate.Layer, 0, len(names))
+	last := -1
+	for _, n := range names {
+		i, ok := index[n]
+		if !ok {
+			return nil, fmt.Errorf("requirement names layer %q, which the stack does not declare", n)
+		}
+		if i <= last {
+			return nil, fmt.Errorf("requirement lists layer %q out of stack order", n)
+		}
+		last = i
+		out = append(out, stack[i])
+	}
+	return out, nil
 }
 
 // NewAppFixture creates a LifecycleFixture over one database, described by
 // the fx option: it must provide the *datagorm.Config, the
-// *gormsetup.OwnerGormConfig, the *gormmigrate.MigratorGormConfig and the
-// []gormmigrate.MigratorData of the base tier, and may provide a
-// migrate.Reversible tagged name:"delta".
+// *gormsetup.OwnerGormConfig, and the ordered []migrate.Layer stack.
 func NewAppFixture(name string, opt fx.Option) datatesting.LifecycleFixture {
 	return &appFixture{
 		name: fmt.Sprintf("gorm: %s", name),
@@ -216,11 +372,10 @@ type GormTestingConfigResult struct {
 	GormConfig         *gorm2.Config
 	SetupGormConfig    *gormsetup.OwnerGormConfig
 	MigratorGormConfig *gormmigrate.MigratorGormConfig
-	MigratorData       []gormmigrate.MigratorData
 }
 
-// NewStaticGormTestingConfig creates a static GORM testing configuration function using the provided configs and migrator data.
-func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.Config, migratorData []gormmigrate.MigratorData) func() GormTestingConfigResult {
+// NewStaticGormTestingConfig creates a static GORM testing configuration function using the provided configs.
+func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.Config) func() GormTestingConfigResult {
 	return func() GormTestingConfigResult {
 		return GormTestingConfigResult{
 			GormConfig: appConfig,
@@ -239,7 +394,6 @@ func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.Config, migratorDa
 					Name:                     appConfig.Name,
 				},
 			},
-			MigratorData: migratorData,
 		}
 	}
 }

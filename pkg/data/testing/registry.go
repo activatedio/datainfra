@@ -11,7 +11,7 @@ import (
 var globalSuffixCounter atomic.Int64
 
 // AppFixtureLifecycle owns one profile's fixtures: the single shared one that
-// Reuse and ReuseWithMigrate borrow, and any number of fresh ones.
+// most tests borrow, and any number of dedicated ones.
 type AppFixtureLifecycle struct {
 	once    *sync.Once
 	shared  LifecycleFixture
@@ -39,10 +39,10 @@ func (a *AppFixtureLifecycle) GetShared() (LifecycleFixture, Closer) {
 	return a.shared, cl
 }
 
-// GetFresh returns a new fixture with its own suffix. Its database is dropped
-// by the fixture itself when the test that used it ends, so there is no
-// Closer to hold.
-func (a *AppFixtureLifecycle) GetFresh() LifecycleFixture {
+// GetDedicated returns a new fixture with its own suffix. Its database is
+// dropped by the fixture itself when the test that used it ends, so there is
+// no Closer to hold.
+func (a *AppFixtureLifecycle) GetDedicated() LifecycleFixture {
 	return a.factory(a.makeSuffix())
 }
 
@@ -51,17 +51,17 @@ func (a *AppFixtureLifecycle) makeSuffix() string {
 }
 
 type AppFixtureOptions struct {
-	mode   Mode
+	req    Requirement
 	filter func(p any) bool
 }
 
 type AppFixtureOption func(a *AppFixtureOptions)
 
-// WithMode selects the lifecycle for the returned fixtures. The default is
-// ModeReuse.
-func WithMode(mode Mode) AppFixtureOption {
+// Require states what the returned fixtures must provide. The default is the
+// whole stack, Tolerant, shared.
+func Require(req Requirement) AppFixtureOption {
 	return func(a *AppFixtureOptions) {
-		a.mode = mode
+		a.req = req
 	}
 }
 
@@ -96,7 +96,7 @@ func NewAppFixtureRegistry[P comparable](profiles []P, factory func(profile P) f
 	}
 }
 
-// GetFixtures returns one Mode-bound fixture per matching profile.
+// GetFixtures returns one Requirement-bound fixture per matching profile.
 func (r *AppFixtureRegistry[P]) GetFixtures(opts ...AppFixtureOption) []AppFixture {
 
 	r.lock.Lock()
@@ -105,7 +105,6 @@ func (r *AppFixtureRegistry[P]) GetFixtures(opts ...AppFixtureOption) []AppFixtu
 	var res []AppFixture
 
 	o := &AppFixtureOptions{
-		mode:   ModeReuse,
 		filter: func(_ any) bool { return true },
 	}
 
@@ -122,22 +121,22 @@ func (r *AppFixtureRegistry[P]) GetFixtures(opts ...AppFixtureOption) []AppFixtu
 			l = NewAppFixtureLifecycle(r.factory(p))
 			r.cache[p] = l
 		}
-		if o.mode == ModeFresh {
-			res = append(res, Bind(l.GetFresh(), o.mode))
+		if o.req.Dedicated {
+			res = append(res, Bind(l.GetDedicated(), o.req))
 			continue
 		}
 		f, cl := l.GetShared()
 		if cl != nil {
 			r.closers = append(r.closers, cl)
 		}
-		res = append(res, Bind(f, o.mode))
+		res = append(res, Bind(f, o.req))
 	}
 
 	return res
 }
 
-// Cleanup drops every shared database. Fresh databases and per-test deltas
-// were already undone by their own t.Cleanup. Call it after m.Run.
+// Cleanup drops every shared database. Dedicated databases were already
+// dropped by their own t.Cleanup. Call it after m.Run.
 func (r *AppFixtureRegistry[P]) Cleanup() {
 	r.lock.Lock()
 	defer r.lock.Unlock()

@@ -30,3 +30,9 @@ INSERT INTO locations (city, state, latitude, longitude) VALUES
   ('San Francisco', 'CA', 3, 4)
 ;
 
+-- +goose Down
+DELETE FROM locations WHERE (city, state) IN (('Seattle', 'WA'), ('San Francisco', 'CA'));
+DELETE FROM themes2 WHERE (tenant_id, name) IN (('1', 'a'), ('1', 'b'), ('2', 'a'), ('2', 'b'));
+DELETE FROM product_categories WHERE (product_sku, category_name) IN (('1', 'a'), ('2', 'a'), ('3', 'b'), ('4', 'b'));
+DELETE FROM products WHERE sku IN ('1', '2', '3', '4');
+DELETE FROM categories WHERE name IN ('a', 'b');

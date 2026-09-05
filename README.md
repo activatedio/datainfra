@@ -17,35 +17,48 @@ Simple project to generate code for repository data access
 
 ## Test lifecycle
 
-`pkg/data/testing` gives every test suite the same four rings around a
-database — **Setup → MigrateUp → [test] → MigrateDown → Teardown** — and three
-ways to place a test inside them:
+`pkg/data/testing` separates four things that fixtures usually conflate.
 
-| Mode | Setup | MigrateUp | MigrateDown | Teardown |
-|---|---|---|---|---|
-| `ModeReuse` | shared database, once | base + delta, once | never | suite end (`Registry.Cleanup`) |
-| `ModeReuseWithMigrate` | shared database, once | base once; **delta per test** | **delta per test**, via `t.Cleanup` | suite end |
-| `ModeFresh` | this test's own database | base + delta | skipped — the drop is the undo | this test, via `t.Cleanup` |
+**Store.** One database. Created by Setup, dropped by Teardown. A profile has
+one shared store, plus a dedicated one for any test that asks. The store
+records which layers it carries and whether a test has run against it since.
 
-Two tiers of migration feed the rings:
+**Layer.** One migration unit with an exact reverse (`migrate.Layer`: `Name`,
+`Up`, `Down`). Layers stack in the order the fixture declares — schema, then
+seed data, then a bootstrap. Every layer's `Down` reverses exactly what its
+`Up` did; nothing is inferred from the database. Two optional interfaces:
 
-* **base** — the graph's untagged `migrate.Migrator` (`gormmigrate.NewMigrator`
-  over the untagged `[]MigratorData`): schema, plus any data the database
-  carries for life. Applied once per database, never reverted.
-* **delta** — the graph's `migrate.Reversible` tagged `name:"delta"`: what one
-  test needs on top and must remove afterwards. Build it from goose sets with
-  `gormmigrate.NewDeltaMigrator` (every file must carry a `-- +goose Down`
-  section, checked at construction), or compose one-directional loaders with
-  `migrate.Sequence(migrate.UpOnly(loader), gormmigrate.NewTableReset(cfg))`,
-  whose Down deletes every data table with DML — no DDL, which is what keeps
-  it cheap on YugabyteDB.
+* `migrate.Resettable` — `Reset` returns the store to "this layer and
+  everything below it freshly applied, nothing above" without the DDL. An
+  optimization the planner uses when it can; a schema layer typically
+  implements it as one `TRUNCATE` over an authored table list.
+* `migrate.Keyed` — a fingerprint for a parameterized layer, so a bootstrap
+  seeded from one test's data is a different layer from the same bootstrap
+  seeded from another's.
 
-Per-test rings run as soon as the test function ends, including after a
-`require` failure, so a suite tears down as it goes; only shared databases
-wait for `Registry.Cleanup()` after `m.Run()`.
+`gormmigrate.NewGooseLayer` builds a layer from a goose set and refuses any
+file without a `-- +goose Down` section.
+
+**Requirement.** What a test declares (`datatesting.Requirement`): the layer
+names it needs (`Stack`, nil for all), how clean the store must be
+(`Tolerant` accepts other tests' leftovers; `Pristine` needs exactly the
+migrated state and holds the store exclusively), and whether it wants a
+`Dedicated` store of its own.
+
+**Planner.** Turns the store's recorded state and the requirement into the
+cheapest exact plan: keep the matching prefix of layers; if pristine is
+needed and the store is dirty, `Reset` the bottom layer when it can and
+otherwise `Down` everything; `Down` what the test does not want, top first;
+`Up` what it lacks. Per-test work — the plan, and the drop of a dedicated
+store — runs as the test ends via `t.Cleanup`; only shared stores wait for
+`Registry.Cleanup()` after `m.Run()`. A failed step marks the store broken,
+fails that test, and has the next test drop and recreate it.
 
 ```go
-Registry.GetFixtures(datatesting.WithMode(datatesting.ModeReuseWithMigrate), datatesting.WithFilter(...))
+Registry.GetFixtures(
+    datatesting.Require(datatesting.Requirement{Stack: []string{"schema"}, Tolerance: datatesting.Pristine}),
+    datatesting.WithFilter(...),
+)
 ```
 
 The bring-up module (`pkg/bringup/gorm`) closes its pool when the fx app

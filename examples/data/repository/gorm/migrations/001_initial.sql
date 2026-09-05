@@ -42,3 +42,10 @@ CREATE TABLE locations (
     longitude REAL,
     PRIMARY KEY (city, state)
 );
+
+-- +goose Down
+DROP TABLE locations;
+DROP TABLE themes2;
+DROP TABLE product_categories;
+DROP TABLE products;
+DROP TABLE categories;

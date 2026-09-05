@@ -7,52 +7,46 @@ import (
 	"go.uber.org/fx"
 )
 
-// Mode selects how a fixture's database is provisioned around one test.
-//
-// Every fixture runs the same four rings — Setup, MigrateUp, the test,
-// MigrateDown, Teardown — and Mode decides which rings belong to this test
-// and which to the shared database the test borrows:
-//
-//	Mode               Setup      MigrateUp        MigrateDown      Teardown
-//	Reuse              shared     base+delta once  never            suite end
-//	ReuseWithMigrate   shared     base once, delta per test, delta undone after
-//	Fresh              this test  base+delta       skipped (drop)   this test
-//
-// "base" is the graph's untagged migrate.Migrator — schema, and data the
-// database carries for life. "delta" is the graph's migrate.Reversible tagged
-// name:"delta" — what one test needs on top, and must remove afterwards.
-type Mode int
+// Tolerance is what a test declares about the state of the database it is
+// handed.
+type Tolerance int
 
 const (
-	// ModeReuse borrows the profile's shared database as-is. Base and delta
-	// are applied once, by whichever test arrives first, and never reverted;
-	// the database is dropped when the suite ends. Tests in this mode must
-	// tolerate each other's rows.
-	ModeReuse Mode = iota
+	// Tolerant tests accept rows left behind by other tests, as long as the
+	// layers they asked for are applied. They may write. They share the
+	// database with other tolerant tests running at the same time.
+	Tolerant Tolerance = iota
 
-	// ModeReuseWithMigrate borrows the shared database but applies the delta
-	// for this test alone and reverts it when the test ends. Deltas on one
-	// database are serialized. The base must be schema-only when the delta's
-	// Down is a table reset.
-	ModeReuseWithMigrate
-
-	// ModeFresh provisions a database for this test alone — base and delta
-	// applied — and drops it when the test ends. Nothing is reverted; the
-	// drop is the undo.
-	ModeFresh
+	// Pristine tests need the database exactly as freshly migrated: the
+	// layers they asked for applied and nothing else written since. They
+	// hold the database exclusively while they run.
+	Pristine
 )
 
-func (m Mode) String() string {
-	switch m {
-	case ModeReuse:
-		return "reuse"
-	case ModeReuseWithMigrate:
-		return "reuse-with-migrate"
-	case ModeFresh:
-		return "fresh"
+func (t Tolerance) String() string {
+	switch t {
+	case Tolerant:
+		return "tolerant"
+	case Pristine:
+		return "pristine"
 	default:
 		return "unknown"
 	}
+}
+
+// Requirement is what a test asks of its fixture.
+type Requirement struct {
+	// Stack names the layers the test needs, in the fixture's declared
+	// order. Nil means the whole stack.
+	Stack []string
+
+	// Tolerance is how clean the database must be. The zero value is
+	// Tolerant.
+	Tolerance Tolerance
+
+	// Dedicated asks for a database of the test's own, dropped when the test
+	// ends, instead of the profile's shared one.
+	Dedicated bool
 }
 
 // AppFixtureResult represents the result of setting up a test fixture, including the app instance and its name.
@@ -65,38 +59,38 @@ type AppFixtureResult struct {
 	App fx.Option
 }
 
-// AppFixture is what Run consumes: a fixture already bound to a Mode.
+// AppFixture is what Run consumes: a fixture already bound to a Requirement.
 type AppFixture interface {
 
 	// GetApp configures and retrieves an application fixture for testing based on provided dependencies and invocation.
 	GetApp(t *testing.T, toProvide ...any) AppFixtureResult
 
 	// Cleanup drops whatever the fixture still owns at suite end. Per-test
-	// rings do not wait for it — they hang off t.Cleanup — so for a fixture
-	// only ever used in ModeFresh this is a no-op.
+	// work never waits for it — it hangs off t.Cleanup — so for a dedicated
+	// fixture this is a no-op by the time it is called.
 	Cleanup() error
 }
 
 // LifecycleFixture is what a backend implements: the same as AppFixture, with
-// the Mode chosen per call. AppFixtureRegistry binds a Mode to produce the
-// AppFixture that Run consumes.
+// the Requirement chosen per call. AppFixtureRegistry binds a Requirement to
+// produce the AppFixture that Run consumes.
 type LifecycleFixture interface {
-	GetApp(t *testing.T, mode Mode, toProvide ...any) AppFixtureResult
+	GetApp(t *testing.T, req Requirement, toProvide ...any) AppFixtureResult
 	Cleanup() error
 }
 
-// Bind fixes a Mode onto a LifecycleFixture.
-func Bind(f LifecycleFixture, mode Mode) AppFixture {
-	return &bound{f: f, mode: mode}
+// Bind fixes a Requirement onto a LifecycleFixture.
+func Bind(f LifecycleFixture, req Requirement) AppFixture {
+	return &bound{f: f, req: req}
 }
 
 type bound struct {
-	f    LifecycleFixture
-	mode Mode
+	f   LifecycleFixture
+	req Requirement
 }
 
 func (b *bound) GetApp(t *testing.T, toProvide ...any) AppFixtureResult {
-	return b.f.GetApp(t, b.mode, toProvide...)
+	return b.f.GetApp(t, b.req, toProvide...)
 }
 
 func (b *bound) Cleanup() error {

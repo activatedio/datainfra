@@ -16,6 +16,7 @@ import (
 	gorm2 "github.com/activatedio/datainfra/pkg/data/gorm"
 	gormtesting "github.com/activatedio/datainfra/pkg/data/gorm/testing"
 	datatesting "github.com/activatedio/datainfra/pkg/data/testing"
+	"github.com/activatedio/datainfra/pkg/migrate"
 	gormmigrate "github.com/activatedio/datainfra/pkg/migrate/gorm"
 )
 
@@ -78,6 +79,22 @@ func TestMain(m *testing.M) {
 		}
 	}
 
+	// makeLayers turns the two goose sets into the fixture's stack: the
+	// schema, then the seed rows. Both sets carry exact Down sections.
+	makeLayers := func(dialect string) any {
+		return func(cfg *gormmigrate.MigratorGormConfig) ([]migrate.Layer, error) {
+			var layers []migrate.Layer
+			for _, d := range makeMigrations(dialect) {
+				l, err := gormmigrate.NewGooseLayer(cfg, d)
+				if err != nil {
+					return nil, err
+				}
+				layers = append(layers, l)
+			}
+			return layers, nil
+		}
+	}
+
 	postgresHost := os.Getenv("POSTGRES_HOST")
 
 	if postgresHost == "" {
@@ -100,7 +117,7 @@ func TestMain(m *testing.M) {
 				EnableDefaultTransaction: true,
 				EnableSQLLogging:         true,
 				Name:                     dbTemp.Name(),
-			}, makeMigrations(DialectSqlite))))), datatesting.ModeReuse),
+			}), makeLayers(DialectSqlite)))), datatesting.Requirement{}),
 		datatesting.Bind(gormtesting.NewAppFixture(DialectPostgres, fx.Module("testing", gorm.Index(),
 			fx.Provide(func() *ProfileMetadata {
 				return &ProfileMetadata{
@@ -124,7 +141,7 @@ func TestMain(m *testing.M) {
 				Name:                     name,
 				Username:                 name,
 				Password:                 name,
-			}, makeMigrations(DialectPostgres))))), datatesting.ModeReuse),
+			}), makeLayers(DialectPostgres)))), datatesting.Requirement{}),
 	}
 
 	rc := m.Run()
