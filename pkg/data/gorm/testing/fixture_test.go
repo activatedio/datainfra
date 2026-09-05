@@ -247,25 +247,41 @@ func TestPlanner(t *testing.T) {
 				require.Equal(t, 2, w.seedC.up)
 			},
 		},
-		"a test that comes back for a store it holds is re-planned under its own hold": {
+		"a test asking twice with one t is refused, not deadlocked or reset underneath": {
 			arrange: func(t *testing.T) *world {
 				w := newWorld(t, true)
-				// One child test, two sequential apps: a loop over profiles or
-				// two datatesting.Run calls. The second must not queue behind
-				// the first's exclusive hold.
 				t.Run("run", func(t *testing.T) {
-					for i := 0; i < 2; i++ {
-						app := fxtest.New(t, fx.NopLogger, w.fix.GetApp(t, pristine).App)
-						app.RequireStart()
-						w.dirty(t)
-						app.RequireStop()
-					}
-					require.Equal(t, []string{"seed:a"}, w.rows(t)[:1])
+					app := fxtest.New(t, fx.NopLogger, w.fix.GetApp(t, pristine).App)
+					app.RequireStart()
+					second := fx.New(fx.NopLogger, w.fix.GetApp(t, pristine).App)
+					require.ErrorContains(t, second.Err(), "already holds this store")
+					app.RequireStop()
 				})
 				return w
 			},
 			assert: func(t *testing.T, w *world) {
-				require.Equal(t, 1, w.schema.c.reset, "second ask reset the store the first phase dirtied")
+				require.Equal(t, 0, w.schema.c.reset, "the running app's store was left alone")
+			},
+		},
+		"parallel subtests of one parent each hold the store in turn": {
+			arrange: func(t *testing.T) *world {
+				w := newWorld(t, true)
+				// Two Runs under one parent, as a test looping over
+				// upstream profiles does. Run gives each backend subtest its
+				// own t, so the second waits for the first instead of
+				// resetting underneath it.
+				t.Run("parent", func(t *testing.T) {
+					for i := 0; i < 2; i++ {
+						datatesting.Run(t, []datatesting.AppFixture{datatesting.Bind(w.fix, pristine)}, func(t *testing.T) {
+							require.Equal(t, []string{"seed:a"}, w.rows(t), "pristine while running")
+							w.dirty(t)
+						})
+					}
+				})
+				return w
+			},
+			assert: func(t *testing.T, w *world) {
+				require.Equal(t, 1, w.schema.c.reset, "second subtest found the first's dirt and reset once")
 				require.Equal(t, 2, w.seedC.up)
 			},
 		},
@@ -277,7 +293,7 @@ func TestPlanner(t *testing.T) {
 					app.RequireStart()
 					app.RequireStop()
 					second := fx.New(fx.NopLogger, w.fix.GetApp(t, pristine).App)
-					require.ErrorContains(t, second.Err(), "holds the store shared")
+					require.ErrorContains(t, second.Err(), "already holds this store")
 				})
 				return w
 			},

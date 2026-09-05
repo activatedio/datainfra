@@ -62,11 +62,14 @@ type appFixture struct {
 	broken  error
 
 	// holders records which tests currently hold the store, and how. A test
-	// that runs several fixture apps in sequence — a loop over profiles, two
-	// datatesting.Run calls — comes back for the store it already holds; it
-	// must not queue behind itself.
+	// asking again for a store it holds would queue behind itself, so it is
+	// answered from the hold it has or refused — never re-planned under it,
+	// since the fixture cannot know whether the first app is still running.
 	holders map[*testing.T]datatesting.Tolerance
 }
+
+// Name identifies the store; Run uses it as the subtest name.
+func (a *appFixture) Name() string { return a.name }
 
 // Cleanup drops the database if it is still there. Per-test work never waits
 // for this; it is the suite-end drop of a shared store.
@@ -176,11 +179,13 @@ func (a *appFixture) create(ctx context.Context) error {
 // for a Pristine test, shared for a Tolerant one. The hold is released by
 // t.Cleanup, which also records that the test may have written.
 //
-// A test already holding the store is served under its existing hold. With
-// an exclusive hold the store is re-planned in place — the test's earlier
-// phase is assumed to have written, so a pristine ask resets again. With a
-// shared hold nothing may be mutated, so the ask must match what the store
-// already carries.
+// A test already holding the store is answered from that hold: a tolerant
+// ask for what the store carries needs nothing more. Anything else is
+// refused, with a message, rather than planned under the existing hold —
+// another app of the same test may be running against the store, and
+// resetting it out from under that app is exactly what the hold prevents.
+// datatesting.Run gives each backend subtest its own t, so this only
+// arises when a test calls GetApp directly, twice, with one t.
 func (a *appFixture) acquire(t *testing.T, req datatesting.Requirement, stack []migrate.Layer) error {
 	ctx := context.Background()
 	target, err := resolve(req.Stack, stack)
@@ -188,23 +193,12 @@ func (a *appFixture) acquire(t *testing.T, req datatesting.Requirement, stack []
 		return fmt.Errorf("fixture %s: %w", a.name, err)
 	}
 
-	if held, ok := a.holding(t); ok {
-		switch {
-		case held == datatesting.Pristine:
-			a.markDirty()
-			if err := a.plan(ctx, target, req.Tolerance); err != nil {
-				a.stateMu.Lock()
-				a.broken = err
-				a.stateMu.Unlock()
-				return fmt.Errorf("fixture %s: %w", a.name, err)
-			}
+	if _, ok := a.holding(t); ok {
+		if req.Tolerance == datatesting.Tolerant && a.carries(target) {
 			return nil
-		case req.Tolerance == datatesting.Tolerant && a.carries(target):
-			return nil
-		default:
-			return fmt.Errorf("fixture %s: test %s holds the store shared and asks for %s with a different stack; "+
-				"one requirement per test, or ask for pristine up front", a.name, t.Name(), req.Tolerance)
 		}
+		return fmt.Errorf("fixture %s: test %s already holds this store and asks for %s; "+
+			"run each app in its own subtest (datatesting.Run does) or ask once", a.name, t.Name(), req.Tolerance)
 	}
 
 	for {

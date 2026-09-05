@@ -62,6 +62,9 @@ type AppFixtureResult struct {
 // AppFixture is what Run consumes: a fixture already bound to a Requirement.
 type AppFixture interface {
 
+	// Name identifies the fixture; Run uses it as the subtest name.
+	Name() string
+
 	// GetApp configures and retrieves an application fixture for testing based on provided dependencies and invocation.
 	GetApp(t *testing.T, toProvide ...any) AppFixtureResult
 
@@ -75,6 +78,7 @@ type AppFixture interface {
 // the Requirement chosen per call. AppFixtureRegistry binds a Requirement to
 // produce the AppFixture that Run consumes.
 type LifecycleFixture interface {
+	Name() string
 	GetApp(t *testing.T, req Requirement, toProvide ...any) AppFixtureResult
 	Cleanup() error
 }
@@ -88,6 +92,8 @@ type bound struct {
 	f   LifecycleFixture
 	req Requirement
 }
+
+func (b *bound) Name() string { return b.f.Name() }
 
 func (b *bound) GetApp(t *testing.T, toProvide ...any) AppFixtureResult {
 	return b.f.GetApp(t, b.req, toProvide...)

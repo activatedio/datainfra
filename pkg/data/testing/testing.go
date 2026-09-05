@@ -125,10 +125,18 @@ func Run(t *testing.T, fixtures []AppFixture, toInvoke any, opts ...RunOption) {
 
 	for _, fix := range fixtures {
 
-		res := fix.GetApp(t, cfg.provide...)
+		// Each backend runs as its own parallel subtest, and the fixture is
+		// asked with that subtest's t: the store hold, the reverse of this
+		// test's layers and the drop of a dedicated store all belong to the
+		// subtest and run when it ends. Asking with the parent t would make
+		// every backend's subtest — and every Run a test function makes —
+		// look like one holder.
+		name := fix.Name()
 
-		t.Run(res.Name, func(subt *testing.T) {
+		t.Run(name, func(subt *testing.T) {
 			subt.Parallel()
+
+			res := fix.GetApp(subt, cfg.provide...)
 
 			inv := newInvoker(toInvoke)
 			invokeArgs := inv.getArgs()
