@@ -151,23 +151,46 @@ binding (AND-chained); an unknown predicate name returns
 
 ## Pagination
 
-`DoList` does forward cursor pagination over the entity's single key
-column. Pagination engages when:
+Every list is a page. `DoList` never returns more than one page, and a
+caller that wants the whole result follows `NextPageToken` — or lets
+`data.Collect` do it under a ceiling.
 
-- `ListParams.PageParams != nil`, AND
-- The template was configured with both `KeyColumn` (snake_case column)
-  and `KeyAccessor` (extracts the key value from an internal row).
+- A nil `ListParams.PageParams`, or a `Count <= 0`, means the first page of
+  `DefaultPageSize` (100) rows. `NextPageToken` is set whenever more rows
+  remain, so an empty `ListParams{}` is *not* "everything"; it is page one.
+- Pagination runs a forward cursor over the entity's `KeyColumns` (one for
+  single keys, several for composite keys), ordered ascending, with the
+  token decoded as a strict lower bound `(cols) > (vals)`. `DoList` fetches
+  `Count + 1` rows, truncates to `Count`, and emits the last row's key as
+  the token. Tokens are opaque to clients. The generator emits
+  `KeyColumns`/`KeyAccessor` for every keyed entity.
+- A template **without** key columns cannot hand out tokens. It still fetches
+  `Count + 1`; if the extra row materializes `DoList` returns
+  `gorm.UnpagedOverflowError` rather than a silently truncated list, and it
+  rejects any `PageToken`. Configure the key columns or narrow the criteria.
+- `ListParams.Selector` is applied to the fetched page in Go, so a page can
+  hold fewer than `Count` rows (even none) while a token is still present.
+  Terminate on the token, never on the row count.
 
-The generator emits both for entities with `len(jh.Keys) == 1`. Composite
-keys fall back to the legacy fixed-limit query (no `NextPageToken`).
+Helpers in `pkg/data/collect.go`, both taking a `data.ListFunc[E]` (any
+`ListAll`/`ListBy*` method value fits):
 
-Algorithm: order by key ascending, decode `PageToken` (base64) and apply
-as `WHERE key > ?`, fetch `Count + 1` rows, truncate to `Count` and emit
-`NextPageToken` = base64-encoded last-row key when the +1 row materializes.
-Tokens are opaque to clients.
+- `data.Collect(ctx, repo.ListAll, data.CollectParams{Max, PageSize,
+  Selector})` follows tokens to exhaustion into one slice. `Max` is the
+  caller's memory ceiling, default `DefaultCollectMax` (10 000); past it
+  Collect returns `data.CollectLimitExceeded` (naming the ceiling, how far
+  it got, and that `Max` is the lever) and **no partial result**. Rows held
+  never exceed `Max` plus one page.
+- `data.ExistsAny(ctx, repo.ListAll, selector)` answers "is there at least
+  one row here?" under the ambient context scope without collecting. Use it
+  for emptiness guards over populations that may legitimately exceed the
+  ceiling; with no selector it costs a single `LIMIT 2` query. Its answer
+  always agrees with whether `Collect` over the same list would be empty.
 
-`DefaultPageSize` is 100 — used when `PageParams.Count <= 0` and as the
-hard cap for non-paginated callers.
+There is deliberately no count primitive: a total that ignores the label
+selector answers a narrower question than the caller asked, which is the
+same defect class as an unpaged read. A scoped count would have to take
+the selector; none is needed yet.
 
 ## Working in this repo
 

@@ -14,9 +14,27 @@ import (
 	"github.com/activatedio/datainfra/pkg/reflect"
 )
 
-// DefaultPageSize is the page size used when ListParams.PageParams is
-// non-nil but PageParams.Count is zero or negative.
+// DefaultPageSize is the page size DoList uses when the caller supplies no
+// PageParams, or supplies one whose Count is zero or negative. Every list is
+// a page: a caller that wants more than one page follows NextPageToken, or
+// uses data.Collect to do so under a ceiling.
 const DefaultPageSize = 100
+
+// UnpagedOverflowError is returned by DoList when a template configured
+// without KeyColumns/KeyAccessor matches more rows than the requested page
+// can hold. Such a template cannot produce a NextPageToken, so returning
+// the first Limit rows would silently truncate the result. The remedy is to
+// configure KeyColumns and KeyAccessor on the template (the generator emits
+// them for every keyed entity) or to narrow the criteria.
+type UnpagedOverflowError struct {
+	Table string
+	Limit int
+}
+
+func (e UnpagedOverflowError) Error() string {
+	return fmt.Sprintf("table %q matched more than %d rows but has no key columns to page over; "+
+		"configure KeyColumns and KeyAccessor on the template or narrow the criteria", e.Table, e.Limit)
+}
 
 // MappingTemplate defines operations for mapping between external and internal representations of entities.
 type MappingTemplate[E any, I any] interface {
@@ -72,8 +90,9 @@ type templateImpl[E any, I any] struct {
 // lists the snake_case database columns ordered on (in canonical order, one
 // entry for single-key entities, multiple for composite keys); KeyAccessor
 // returns the values of those columns from a fetched row, in matching
-// order. Both must be supplied to enable pagination; otherwise DoList falls
-// back to a fixed-limit query with no page tokens.
+// order. Both must be supplied to enable pagination. Without them DoList
+// still limits to one page but cannot hand out a NextPageToken, so it
+// returns UnpagedOverflowError rather than truncate when more rows match.
 type TemplateParams[E any, I any] struct {
 	ContextScope ContextScopeFactory
 	Table        string
@@ -205,17 +224,27 @@ func (c *templateImpl[E, I]) DoFind(ctx context.Context, delegate func(db *gorm.
 	}
 }
 
-// DoList retrieves a list of external entities based on the provided criteria and list parameters.
+// DoList retrieves one page of external entities based on the provided
+// criteria and list parameters.
 //
-// When params.PageParams is non-nil and the template was configured with a
-// KeyColumn + KeyAccessor, DoList paginates with a forward cursor over the
-// key column: it orders by the key ascending, applies PageToken as a strict
-// lower bound, fetches one extra row to detect overflow, and populates
-// NextPageToken on the response when more rows remain. Tokens are opaque
-// base64 strings; callers should treat them as cookies.
+// Every call returns a page. A nil params.PageParams means the first page of
+// DefaultPageSize rows; a Count of zero or less means DefaultPageSize as
+// well. When the template was configured with KeyColumns + KeyAccessor,
+// DoList paginates with a forward cursor over the key columns: it orders by
+// the key ascending, applies PageToken as a strict lower bound, fetches one
+// extra row to detect overflow, and populates NextPageToken on the response
+// when more rows remain. Tokens are opaque base64 strings; callers should
+// treat them as cookies. A result with an empty NextPageToken is complete.
 //
-// When pagination is not configured, DoList applies a fixed DefaultPageSize
-// limit and never returns a NextPageToken.
+// A template without key columns cannot produce a token. It still fetches
+// one row past the page; if that row materializes DoList returns
+// UnpagedOverflowError instead of a silently truncated list, and a
+// PageToken supplied to it is rejected.
+//
+// params.Selector is applied to the fetched page after the database query,
+// so a page may hold fewer rows than Count (even none) while NextPageToken
+// is still set. Callers must follow the token, not the row count, to know
+// when they are done; data.Collect and data.ExistsAny do this correctly.
 func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pagination, scope, criteria, and label filter checks each add a branch
 	criteriaBuilder func(tx *gorm.DB) *gorm.DB,
 	params data.ListParams) (*data.List[E], error) {
@@ -232,17 +261,20 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pag
 		tx = criteriaBuilder(tx)
 	}
 
-	count, paginate := c.resolvePageCount(params.PageParams)
+	count := resolvePageCount(params.PageParams)
+	paginate := c.pageable()
 	if paginate {
-		var err error
 		tx, err = c.applyPageCursor(tx, params.PageParams)
 		if err != nil {
 			return nil, err
 		}
-		tx = tx.Order(strings.Join(c.keyColumns, ", ")).Limit(count + 1)
-	} else {
-		tx = tx.Limit(count)
+		tx = tx.Order(strings.Join(c.keyColumns, ", "))
+	} else if params.PageParams != nil && params.PageParams.PageToken != "" {
+		return nil, fmt.Errorf("invalid page token: table %q has no key columns to page over", c.table)
 	}
+	// Always fetch one row past the page so overflow is detected rather than
+	// silently dropped.
+	tx = tx.Limit(count + 1)
 
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -256,7 +288,10 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pag
 	}
 
 	var nextToken string
-	if paginate && len(results) > count {
+	if len(results) > count {
+		if !paginate {
+			return nil, UnpagedOverflowError{Table: c.table, Limit: count}
+		}
 		nextToken, err = c.encodeCursor(c.keyAccessor(results[count-1]))
 		if err != nil {
 			return nil, err
@@ -282,24 +317,26 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pag
 	}, nil
 }
 
-// resolvePageCount returns the row limit to apply and whether cursor
-// pagination is active. Pagination requires both a configured non-empty
-// KeyColumns plus a KeyAccessor and a non-nil PageParams.
-func (c *templateImpl[E, I]) resolvePageCount(pp *data.PageParams) (int, bool) {
-	if pp == nil || len(c.keyColumns) == 0 || c.keyAccessor == nil {
-		return DefaultPageSize, false
+// resolvePageCount returns the page size to apply: PageParams.Count when
+// positive, DefaultPageSize otherwise (including a nil PageParams).
+func resolvePageCount(pp *data.PageParams) int {
+	if pp == nil || pp.Count <= 0 {
+		return DefaultPageSize
 	}
-	if pp.Count <= 0 {
-		return DefaultPageSize, true
-	}
-	return pp.Count, true
+	return pp.Count
+}
+
+// pageable reports whether the template can hand out page tokens, which
+// requires both non-empty KeyColumns and a KeyAccessor.
+func (c *templateImpl[E, I]) pageable() bool {
+	return len(c.keyColumns) > 0 && c.keyAccessor != nil
 }
 
 // applyPageCursor applies the PageToken (if any) as a strict lower-bound
 // row-constructor WHERE clause: (col1, col2, ...) > (v1, v2, ...). Single-
 // key entities reduce to (col1) > (v1) which the SQL engines accept.
 func (c *templateImpl[E, I]) applyPageCursor(tx *gorm.DB, pp *data.PageParams) (*gorm.DB, error) {
-	if pp.PageToken == "" {
+	if pp == nil || pp.PageToken == "" {
 		return tx, nil
 	}
 	decoded, err := base64.StdEncoding.DecodeString(pp.PageToken)
