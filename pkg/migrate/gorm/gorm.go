@@ -97,27 +97,34 @@ func newProvider(config *datagorm.Config, db *gorm.DB, d MigratorData, versioned
 	return provider, nil
 }
 
-func upWithRetry(ctx context.Context, provider *goose.Provider, name string) error {
-	const (
-		attempts = 5
-		baseWait = 200 * time.Millisecond
-	)
-	var err error
-	for attempt := 1; attempt <= attempts; attempt++ {
-		if _, err = provider.Up(ctx); err == nil {
-			return nil
-		}
-		if !datagorm.IsSerializationFailure(err) {
-			break
-		}
-		log.Warn().Str("component", "gorm").Str("name", name).Int("attempt", attempt).Err(err).Msg("retrying migration set after serialization failure")
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Duration(attempt) * baseWait):
-		}
+// up applies a set and fails on the first error. It does NOT retry.
+//
+// It used to. The retry was there for the SQLSTATE 40001 YugabyteDB raises
+// when concurrent DDL contends on the catalog, and it made things strictly
+// worse, because retrying meant re-running `provider.Up` — correct only for a
+// provider that keeps a version table, which the test layer's deliberately
+// does not (see newProvider). With no record of what had already run, the
+// second attempt started again at the first version and re-applied DDL that
+// had succeeded.
+//
+// kit pipelines 8667 and 8670 both died of it: a 40001 partway in (version 4,
+// then version 2) became
+//
+//	relation "migrations" already exists (SQLSTATE 42P07)
+//
+// at version 1. So the retry converted a transient conflict into a hard
+// failure AND reported the replay's error instead of the real one, pointing
+// every reader at a version and a table that were never the problem. Four
+// days were spent calling that a "yb flake".
+//
+// A conflict here is a signal that too much DDL is running at once, and the
+// fix for that is fewer concurrent migrations (the caller's package
+// parallelism), not a quieter symptom. Let it fail.
+func up(ctx context.Context, provider *goose.Provider, name string) error {
+	if _, err := provider.Up(ctx); err != nil {
+		return fmt.Errorf("migration %q failed: %w", name, err)
 	}
-	return fmt.Errorf("migration %q failed: %w", name, err)
+	return nil
 }
 
 func logSet(config *datagorm.Config, name, direction string, start time.Time) {
@@ -142,7 +149,7 @@ func (m *migrator) Migrate(ctx context.Context) error {
 				return err
 			}
 			start := time.Now()
-			if err := upWithRetry(ctx, provider, d.Name); err != nil {
+			if err := up(ctx, provider, d.Name); err != nil {
 				return err
 			}
 			logSet(m.config, d.Name, "up", start)
@@ -197,7 +204,7 @@ func (l *gooseLayer) Up(ctx context.Context) error {
 			return err
 		}
 		start := time.Now()
-		if err := upWithRetry(ctx, provider, l.data.Name); err != nil {
+		if err := up(ctx, provider, l.data.Name); err != nil {
 			return err
 		}
 		logSet(l.config, l.data.Name, "up", start)
