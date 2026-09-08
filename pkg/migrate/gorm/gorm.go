@@ -117,14 +117,19 @@ func newProvider(config *datagorm.Config, db *gorm.DB, d MigratorData, versioned
 // every reader at a version and a table that were never the problem. Four
 // days were spent calling that a "yb flake".
 //
-// A conflict here is a signal that too much DDL is running at once, and the
-// fix for that is fewer concurrent migrations (the caller's package
-// parallelism), not a quieter symptom. Let it fail.
-func up(ctx context.Context, provider *goose.Provider, name string) error {
-	if _, err := provider.Up(ctx); err != nil {
-		return fmt.Errorf("migration %q failed: %w", name, err)
-	}
-	return nil
+// A conflict here is a signal that too much DDL is running at once, so the
+// fix is to stop it happening rather than to soften the symptom: the set runs
+// under the machine-wide DDL lock, the same one setup already takes for
+// CREATE/DROP DATABASE. Sharing it matters — a CREATE DATABASE concurrent
+// with a migration bumps the catalog version exactly as a second migration
+// would. If a conflict still gets through, it fails.
+func up(ctx context.Context, config *datagorm.Config, provider *goose.Provider, name string) error {
+	return datagorm.WithDDLLock(config.Host, config.Port, func() error {
+		if _, err := provider.Up(ctx); err != nil {
+			return fmt.Errorf("migration %q failed: %w", name, err)
+		}
+		return nil
+	})
 }
 
 func logSet(config *datagorm.Config, name, direction string, start time.Time) {
@@ -149,7 +154,7 @@ func (m *migrator) Migrate(ctx context.Context) error {
 				return err
 			}
 			start := time.Now()
-			if err := up(ctx, provider, d.Name); err != nil {
+			if err := up(ctx, m.config, provider, d.Name); err != nil {
 				return err
 			}
 			logSet(m.config, d.Name, "up", start)
@@ -204,7 +209,7 @@ func (l *gooseLayer) Up(ctx context.Context) error {
 			return err
 		}
 		start := time.Now()
-		if err := up(ctx, provider, l.data.Name); err != nil {
+		if err := up(ctx, l.config, provider, l.data.Name); err != nil {
 			return err
 		}
 		logSet(l.config, l.data.Name, "up", start)

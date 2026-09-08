@@ -11,7 +11,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Serializing CREATE/DROP DATABASE
+// Serializing DDL
+//
+// This lock covers two kinds of DDL against one target: CREATE/DROP DATABASE
+// from setup, and the schema DDL a migration set applies. They share the lock
+// deliberately — both bump YugabyteDB's catalog version, so a CREATE DATABASE
+// running against a concurrent migration conflicts exactly as two migrations
+// do, and serializing each kind only against its own would leave that case.
 //
 // CREATE DATABASE and DROP DATABASE are global-impact DDL on YugabyteDB:
 // they bump every database's catalog version, and they are not
@@ -32,13 +38,26 @@ import (
 // the case that matters, since `go test ./...` runs one process per package
 // against one database server. It is keyed by target host and port so
 // unrelated servers do not wait on each other, and it is held only around
-// the DDL statement itself, so everything else still runs in parallel.
+// the DDL itself, so everything else still runs in parallel.
+//
+// Migrations were NOT covered until kit hit the other half of this: schema
+// DDL from migration sets in different packages contending on the catalog,
+// reported as SQLSTATE 40001 mid-set (kit pipelines 8667, 8670, 8671). That
+// is the same conflict this lock was already built to prevent, so it now
+// wraps a set's Up as well. A set is held for seconds rather than for one
+// statement, which is the cost of covering it.
 //
 // A file lock deliberately does not span machines. Cross-machine bring-up
 // (several replicas of one service starting at once) is already handled by
 // the duplicate-object checks in createDatabase: the loser of that race
 // finds the database present, which is the outcome it wanted.
 
+// WithDDLLock is NOT reentrant: the per-target mutex below is a plain
+// sync.Mutex, so taking the lock while already holding it for the same target
+// deadlocks. Callers hold it around one DDL statement or one migration set
+// and never around each other — setup takes it for CREATE/DROP DATABASE only,
+// and migrate takes it for a set's Up, which runs outside setup's window.
+//
 // inProcessDDLLocks guards the DDL lock file per target within this process.
 // The file lock alone is not enough: flock is advisory per open file
 // description, and two goroutines in one process sharing a descriptor would
@@ -66,23 +85,23 @@ func ddlLockPath(host string, port int) string {
 	return filepath.Join(os.TempDir(), "datainfra-dbddl-"+hex.EncodeToString(sum[:8])+".lock")
 }
 
-// withDatabaseDDLLock runs fn while holding the machine-wide lock for the
-// owner target.
+// WithDDLLock runs fn while holding the machine-wide DDL lock for the target
+// at host:port.
 //
 // A lock that cannot be taken is logged and skipped rather than failing the
 // operation: the lock is a serialization aid, not a correctness barrier, and
 // a read-only or unusual TMPDIR should not stop a database from being
-// created. The caller's own duplicate/conflict handling remains the
-// backstop.
-func (g *gormSetup) withDatabaseDDLLock(fn func() error) error {
+// created or migrated. The caller's own duplicate/conflict handling remains
+// the backstop.
+func WithDDLLock(host string, port int, fn func() error) error {
 
-	key := fmt.Sprintf("%s:%d", g.ownerConfig.Host, g.ownerConfig.Port)
+	key := fmt.Sprintf("%s:%d", host, port)
 
 	mu := inProcessDDLLock(key)
 	mu.Lock()
 	defer mu.Unlock()
 
-	path := ddlLockPath(g.ownerConfig.Host, g.ownerConfig.Port)
+	path := ddlLockPath(host, port)
 
 	// The path is ddlLockPath's output — os.TempDir plus a hash of host:port —
 	// and never caller-supplied.

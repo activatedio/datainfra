@@ -342,6 +342,13 @@ const databaseDDLAttempts = 6
 // databaseDDLBaseWait is the linear backoff step between attempts.
 const databaseDDLBaseWait = 250 * time.Millisecond
 
+// withDatabaseDDLLock serializes this setup's database DDL against every
+// other process touching the same server — including migration sets, which
+// share the lock (see datagorm.WithDDLLock).
+func (g *gormSetup) withDatabaseDDLLock(fn func() error) error {
+	return datagorm.WithDDLLock(g.ownerConfig.Host, g.ownerConfig.Port, fn)
+}
+
 // createDatabase creates a new database using the given name from the appConfig configuration.
 //
 // The loop exists because CREATE DATABASE is not transactional on
