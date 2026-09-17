@@ -9,5 +9,5 @@ import (
 
 // Index collects constructors for implementations in an fx module
 func Index() fx.Option {
-	return fx.Module("example.data.gorm", fx.Provide(gorm.NewDB, gorm.NewContextBuilder, NewLocationRepository, NewCategoryRepository, NewProductRepository, NewThemeRepository))
+	return fx.Module("example.data.gorm", fx.Provide(gorm.NewDB, gorm.NewContextBuilder, NewLocationRepository, NewCategoryRepository, NewProductRepository, NewTagRepository, NewThemeRepository))
 }

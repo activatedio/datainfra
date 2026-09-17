@@ -44,7 +44,21 @@ type ProductRepository interface {
 	Search(ctx context.Context, criteria []*data.SearchPredicate, params *data.PageParams) (*data.List[*data.SearchResult[*model.Product]], error)
 	GetSearchPredicates(context.Context) ([]*data.SearchPredicateDescriptor, error)
 	AssociateCategories(ctx context.Context, key string, add []string, remove []string) error
+	AssociateTags(ctx context.Context, key string, add []string, remove []string) error
 	ListByCategory(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Product], error)
+	ListByTag(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Product], error)
+}
+
+// TagRepository is a repository for the type Tag
+type TagRepository interface {
+	FindByKey(context.Context, string) (*model.Tag, error)
+	ExistsByKey(context.Context, string) (bool, error)
+	ListAll(context.Context, data.ListParams) (*data.List[*model.Tag], error)
+	Create(context.Context, *model.Tag) error
+	Update(context.Context, *model.Tag) error
+	Delete(context.Context, string) error
+	DeleteEntity(context.Context, *model.Tag) error
+	FilterKeys(ctx context.Context, keys []string) ([]string, error)
 }
 
 // ThemeRepository is a repository for the type Theme

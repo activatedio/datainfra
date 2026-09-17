@@ -22,6 +22,19 @@ func (p *Product) GetStringID() string {
 	return p.SKU
 }
 
+// Tag represents a free-form label that can be attached to a Product. It
+// exists so the example carries two Associate edges on one parent — the
+// capability WithTest selects between.
+type Tag struct {
+	Name  string `data:"key" gorm:"primaryKey"`
+	Color string
+}
+
+// GetKey returns the name of the Tag instance.
+func (t *Tag) GetKey() string {
+	return t.Name
+}
+
 // Theme represents a thematic entity with a unique name and description.
 type Theme struct {
 	Name        string `data:"key" gorm:"primaryKey"`

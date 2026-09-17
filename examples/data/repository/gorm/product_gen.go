@@ -23,12 +23,14 @@ type productRepositoryImpl struct {
 	data.CrudTemplate[*model.Product, string]
 	data.SearchTemplate[*model.Product]
 	categoryRepository repository.CategoryRepository
+	tagRepository      repository.TagRepository
 }
 
 // ProductRepositoryParams are the parameters for ProductRepository
 type ProductRepositoryParams struct {
 	fx.In
 	CategoryRepository repository.CategoryRepository
+	TagRepository      repository.TagRepository
 }
 
 // NewProductRepository creates a new ProductRepository
@@ -87,6 +89,7 @@ func NewProductRepository(params ProductRepositoryParams) repository.ProductRepo
 			},
 		}),
 		categoryRepository: params.CategoryRepository,
+		tagRepository:      params.TagRepository,
 	}
 }
 
@@ -102,9 +105,28 @@ func (r *productRepositoryImpl) AssociateCategories(ctx context.Context, key str
 		ChildRepository:  r.categoryRepository,
 	})
 }
+func (r *productRepositoryImpl) AssociateTags(ctx context.Context, key string, add []string, remove []string) error {
+	return gorm.Associate[string, string](ctx, gorm.AssociateParams[string, string]{
+		AssociationTable: "product_tags",
+		ParentColumnName: "product_sku",
+		ChildColumnName:  "tag_name",
+		ParentKey:        key,
+		Add:              add,
+		Remove:           remove,
+		ParentRepository: r,
+		ChildRepository:  r.tagRepository,
+		ExecuteAdd:       ProductTagExecuteAdd,
+	})
+}
 func (r *productRepositoryImpl) ListByCategory(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Product], error) {
 	return r.Template.DoList(ctx, func(tx *gorm1.DB) *gorm1.DB {
 		tx = tx.Joins("INNER JOIN product_categories ON product_categories.product_sku = products.sku").Where("product_categories.category_name=?", key)
+		return tx
+	}, params)
+}
+func (r *productRepositoryImpl) ListByTag(ctx context.Context, key string, params data.ListParams) (*data.List[*model.Product], error) {
+	return r.Template.DoList(ctx, func(tx *gorm1.DB) *gorm1.DB {
+		tx = tx.Joins("INNER JOIN product_tags ON product_tags.product_sku = products.sku").Where("product_tags.tag_name=?", key)
 		return tx
 	}, params)
 }

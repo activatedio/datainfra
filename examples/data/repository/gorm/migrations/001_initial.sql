@@ -28,6 +28,21 @@ CREATE TABLE product_categories (
     FOREIGN KEY (category_name) REFERENCES categories(name)
 );
 
+CREATE TABLE tags (
+    name VARCHAR(64),
+    color VARCHAR(32),
+    PRIMARY KEY (name)
+);
+
+CREATE TABLE product_tags (
+    product_sku VARCHAR(64),
+    tag_name VARCHAR(64),
+    created_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (product_sku, tag_name),
+    FOREIGN KEY (product_sku) REFERENCES products(sku),
+    FOREIGN KEY (tag_name) REFERENCES tags(name)
+);
+
 CREATE TABLE themes2 (
     tenant_id VARCHAR(64),
     name VARCHAR(64),
@@ -46,6 +61,8 @@ CREATE TABLE locations (
 -- +goose Down
 DROP TABLE locations;
 DROP TABLE themes2;
+DROP TABLE product_tags;
 DROP TABLE product_categories;
 DROP TABLE products;
+DROP TABLE tags;
 DROP TABLE categories;

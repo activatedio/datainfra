@@ -229,6 +229,72 @@ func TestProductRepository_Associate(t *testing.T) {
 	})
 }
 
+// TestProductRepository_AssociateTags covers the second edge on Product. The
+// Tag edge declares its own ExecuteAdd and the Category edge does not, so this
+// also asserts the generator put the hook on one edge and not the other: the
+// tag add is idempotent, the category add is not.
+func TestProductRepository_AssociateTags(t *testing.T) {
+	a := assert.New(t)
+	r := require.New(t)
+	datatesting.Run(t, AppFixtures, func(cp datatesting.ContextProvider,
+		unit repository.ProductRepository,
+		cr repository.CategoryRepository,
+		tr repository.TagRepository,
+	) {
+
+		ctx := cp.GetContext()
+
+		sku := uuid.New().String()
+		tag := uuid.New().String()
+		category := uuid.New().String()
+
+		r.NoError(unit.Create(ctx, &model.Product{SKU: sku, Description: sku}))
+		r.NoError(tr.Create(ctx, &model.Tag{Name: tag, Color: "red"}))
+		r.NoError(cr.Create(ctx, &model.Category{Name: category, Description: category}))
+
+		// Both edges write to their own table.
+
+		r.NoError(unit.AssociateTags(ctx, sku, []string{tag}, nil))
+		r.NoError(unit.AssociateCategories(ctx, sku, []string{category}, nil))
+
+		got, err := unit.ListByTag(ctx, tag, data.ListParams{})
+		r.NoError(err)
+		a.Len(got.List, 1)
+
+		got, err = unit.ListByCategory(ctx, category, data.ListParams{})
+		r.NoError(err)
+		a.Len(got.List, 1)
+
+		// ProductTagExecuteAdd is ON CONFLICT DO NOTHING, so a repeat add on
+		// the tag edge is a no-op rather than a primary key violation.
+
+		r.NoError(unit.AssociateTags(ctx, sku, []string{tag}, nil))
+
+		got, err = unit.ListByTag(ctx, tag, data.ListParams{})
+		r.NoError(err)
+		a.Len(got.List, 1)
+
+		// The category edge took the generator default, which has no such
+		// hook. If the generator had put ProductTagExecuteAdd on both edges
+		// this would pass instead of failing.
+
+		r.Error(unit.AssociateCategories(ctx, sku, []string{category}, nil))
+
+		// Removal is unaffected, and reaches only its own edge.
+
+		r.NoError(unit.AssociateTags(ctx, sku, nil, []string{tag}))
+
+		got, err = unit.ListByTag(ctx, tag, data.ListParams{})
+		r.NoError(err)
+		a.Empty(got.List)
+
+		got, err = unit.ListByCategory(ctx, category, data.ListParams{})
+		r.NoError(err)
+		a.Len(got.List, 1)
+
+	})
+}
+
 func TestProductRepository_ListAllPagination(t *testing.T) {
 	a := assert.New(t)
 	r := require.New(t)

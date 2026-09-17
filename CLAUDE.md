@@ -100,6 +100,25 @@ target the markers above, then merge those handlers in via
 `Registry.WithHandlerEntries(gen.NewHandlerEntries().Add...)`. The example
 does exactly this for the Theme entity's `SetTenantID` method.
 
+### Several edges on one parent
+
+A parent declares one `data.Associate` per edge and, where that edge needs
+custom write behaviour, one `gorm.Associate` carrying `ExecuteAdd` /
+`ExecuteRemove`. The two are paired by `ChildType`, so a parent can hold any
+number of edges and each gets only its own hooks. `Product` in the example
+carries two: the `Category` edge takes the generator's default add, the `Tag`
+edge supplies an idempotent one.
+
+The pairing runs through `data.WithTest`, whose predicate **returns** its
+verdict. Before v0.22.0 it took a `func(T)` with no return, was called for its
+side effect on a copy and never filtered — so a parent with a second
+`Associate` of any child type panicked `GetImplementation`, and one parent
+could carry only one edge.
+
+An `Associate` child must be single-keyed. A composite key panics with
+`Associate only supports a single key` — which is why the example's second
+edge goes to `Tag` and not to `Location`.
+
 ## Wiring (DI framework integration)
 
 `data.Wiring` (in `genlib/data/wiring.go`) decouples generated constructors

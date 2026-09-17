@@ -49,8 +49,21 @@ func main() {
 				data.Associate{
 					ChildType: reflect.TypeFor[model.Category](),
 				},
+				// A second edge on the same parent. The Category edge takes
+				// the generator's default add; this one declares its own, and
+				// the generator must put it on this edge only.
+				data.Associate{
+					ChildType: reflect.TypeFor[model.Tag](),
+				},
+				gorm.Associate{
+					ChildType:  reflect.TypeFor[model.Tag](),
+					ExecuteAdd: jen.Id("ProductTagExecuteAdd"),
+				},
 				data.ListByAssociatedKey{
 					AssociatedType: reflect.TypeFor[model.Category](),
+				},
+				data.ListByAssociatedKey{
+					AssociatedType: reflect.TypeFor[model.Tag](),
 				},
 				gorm.Search{
 					Bindings: []gorm.SearchBinding{
@@ -73,6 +86,15 @@ func main() {
 						},
 					},
 				},
+			},
+		},
+		{
+			Type: reflect.TypeFor[model.Tag](),
+			Implementations: []any{
+				data.Crud{
+					Operations: data.OperationsCrud,
+				},
+				data.FilterKeys{},
 			},
 		},
 		{

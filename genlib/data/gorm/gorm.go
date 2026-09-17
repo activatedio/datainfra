@@ -491,7 +491,10 @@ func operatorJenCode(op pkgdata.SearchOperator) *jen.Statement {
 func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint:gocyclo // higher complexity is okay for this
 
 	type helper struct {
-		targetType   reflect.Type
+		// childType is the type on the far end of THIS edge. It is what
+		// selects the gorm.Associate carrying this edge's hooks when the
+		// parent declares more than one.
+		childType    reflect.Type
 		parentHelper JenHelper
 		childHelper  JenHelper
 	}
@@ -508,7 +511,7 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint
 			}
 
 			res = append(res, helper{
-				targetType:   e.Type,
+				childType:    a.ChildType,
 				parentHelper: GetGormJenHelper(e),
 				childHelper:  GetGormJenHelper(_e),
 			})
@@ -591,8 +594,8 @@ func addAssociateHandlers(he *gen.HandlerEntries) *gen.HandlerEntries { //nolint
 				jen.Id("ChildRepository").Op(":").Add(receiverID()).Dot(fmt.Sprintf("%sRepository", strcase.ToLowerCamel(h.childHelper.StructName))).Op(","),
 			}
 
-			ai := data.GetImplementation[Associate](fm.Entry, data.WithTest[Associate](func(in Associate) {
-				in.ChildType = h.targetType
+			ai := data.GetImplementation[Associate](fm.Entry, data.WithTest[Associate](func(in Associate) bool {
+				return in.ChildType == h.childType
 			}))
 
 			if ai != nil {
