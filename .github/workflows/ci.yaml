@@ -24,6 +24,18 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: ${{ env.GOLANGCI_VERSION }}
+          # The default install-mode downloads a release binary from GitHub,
+          # and that download has been failing: "prepare environment / Error:
+          # Unexpected HTTP response: 504". It is the whole reason the lint
+          # job has been red — the tree itself lints clean — and it is
+          # intermittent, which is why the job passed 9 of its last 30 runs
+          # with nobody able to tell which failures were real.
+          #
+          # goinstall builds it from the Go module proxy instead: different
+          # infrastructure, and the one every other step here already depends
+          # on. It costs a compile on a cold cache and buys a signal that
+          # means something.
+          install-mode: goinstall
 
   unit-test:
     services:
