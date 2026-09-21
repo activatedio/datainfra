@@ -26,8 +26,8 @@ import (
 
 // counts records how many times each direction ran on a layer.
 type counts struct {
-	mu                    sync.Mutex
-	up, down, reset, keyN int
+	mu              sync.Mutex
+	up, down, reset int
 }
 
 func (c *counts) inc(p *int) {

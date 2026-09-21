@@ -18,6 +18,8 @@ type AppFixtureLifecycle struct {
 	factory func(suffix string) LifecycleFixture
 }
 
+// NewAppFixtureLifecycle returns a lifecycle that mints fixtures through
+// factory, each with a suffix unique to this process and call.
 func NewAppFixtureLifecycle(factory func(suffix string) LifecycleFixture) *AppFixtureLifecycle {
 	return &AppFixtureLifecycle{
 		factory: factory,
@@ -25,6 +27,9 @@ func NewAppFixtureLifecycle(factory func(suffix string) LifecycleFixture) *AppFi
 	}
 }
 
+// Closer drops a shared database. It is handed out exactly once per shared
+// fixture, to whoever created it, so a suite tears down what it built and
+// nothing tears down what it merely borrowed.
 type Closer func() error
 
 // GetShared returns the profile's shared fixture, creating it on first use.
@@ -50,11 +55,15 @@ func (a *AppFixtureLifecycle) makeSuffix() string {
 	return fmt.Sprintf("%d_%d_%d", time.Now().UnixMilli(), os.Getpid(), globalSuffixCounter.Add(1))
 }
 
+// AppFixtureOptions is what the AppFixtureOption functions accumulate into:
+// what the caller requires of a fixture, and which profiles it wants.
 type AppFixtureOptions struct {
 	req    Requirement
 	filter func(p any) bool
 }
 
+// AppFixtureOption narrows what GetFixtures returns. See Require and
+// WithFilter.
 type AppFixtureOption func(a *AppFixtureOptions)
 
 // Require states what the returned fixtures must provide. The default is the
@@ -65,6 +74,9 @@ func Require(req Requirement) AppFixtureOption {
 	}
 }
 
+// WithFilter restricts the returned fixtures to the profiles the predicate
+// accepts. P must be the registry's own profile type; a mismatch panics on
+// the type assertion, which is a wiring error rather than a test failure.
 func WithFilter[P comparable](predicate func(p P) bool) AppFixtureOption {
 	return func(a *AppFixtureOptions) {
 		a.filter = func(p any) bool {
@@ -73,6 +85,9 @@ func WithFilter[P comparable](predicate func(p P) bool) AppFixtureOption {
 	}
 }
 
+// AppFixtureRegistry hands out fixtures per profile, creating each profile's
+// lifecycle on first use and remembering the closers for the shared
+// databases so Cleanup can drop them at suite end.
 type AppFixtureRegistry[P comparable] struct {
 	lock     sync.Mutex
 	profiles map[P]bool
@@ -81,6 +96,9 @@ type AppFixtureRegistry[P comparable] struct {
 	factory  func(profile P) func(suffix string) LifecycleFixture
 }
 
+// NewAppFixtureRegistry returns a registry over profiles, building each
+// profile's fixture factory on demand rather than up front, so a suite that
+// filters to one profile never stands up the others.
 func NewAppFixtureRegistry[P comparable](profiles []P, factory func(profile P) func(suffix string) LifecycleFixture) *AppFixtureRegistry[P] {
 
 	profileMap := map[P]bool{}
@@ -102,7 +120,7 @@ func (r *AppFixtureRegistry[P]) GetFixtures(opts ...AppFixtureOption) []AppFixtu
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	var res []AppFixture
+	res := make([]AppFixture, 0, len(r.profiles))
 
 	o := &AppFixtureOptions{
 		filter: func(_ any) bool { return true },

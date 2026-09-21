@@ -279,10 +279,10 @@ func (a *appFixture) recoverIfBroken(ctx context.Context) error {
 	}
 	log.Error().Str("fixture", a.name).Err(broken).Msg("store is broken from a failed migration step; dropping and recreating it")
 	if err := a.runTeardown(); err != nil {
-		return fmt.Errorf("recovering broken store: teardown: %w (broken by: %v)", err, broken)
+		return fmt.Errorf("recovering broken store: teardown: %w (broken by: %w)", err, broken)
 	}
 	if err := a.create(ctx); err != nil {
-		return fmt.Errorf("recovering broken store: setup: %w (broken by: %v)", err, broken)
+		return fmt.Errorf("recovering broken store: setup: %w (broken by: %w)", err, broken)
 	}
 	a.stateMu.Lock()
 	a.applied = nil
@@ -304,40 +304,22 @@ func (a *appFixture) plan(ctx context.Context, target []migrate.Layer, tolerance
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
 
-	i := 0
-	for i < len(a.applied) && i < len(target) &&
-		a.applied[i].layer.Name() == target[i].Name() && a.applied[i].key == migrate.KeyOf(target[i]) {
-		i++
-	}
+	i := a.matchedPrefix(target)
 
 	if tolerance == datatesting.Pristine && a.dirty {
-		if r, ok := a.applied[0].layer.(migrate.Resettable); i >= 1 && ok {
-			if err := a.step("reset", a.applied[0].layer, r.Reset); err != nil {
-				return err
-			}
-			a.applied = a.applied[:1]
-			i = 1
-		} else {
-			for j := len(a.applied) - 1; j >= 0; j-- {
-				if err := a.step("down", a.applied[j].layer, a.applied[j].layer.Down); err != nil {
-					return err
-				}
-				a.applied = a.applied[:j]
-			}
-			i = 0
+		var err error
+		if i, err = a.makePristine(ctx, i); err != nil {
+			return err
 		}
 		a.dirty = false
 	}
 
-	for j := len(a.applied) - 1; j >= i; j-- {
-		if err := a.step("down", a.applied[j].layer, a.applied[j].layer.Down); err != nil {
-			return err
-		}
-		a.applied = a.applied[:j]
+	if err := a.downTo(ctx, i); err != nil {
+		return err
 	}
 
 	for j := i; j < len(target); j++ {
-		if err := a.step("up", target[j], target[j].Up); err != nil {
+		if err := a.step(ctx, "up", target[j], target[j].Up); err != nil {
 			return err
 		}
 		a.applied = append(a.applied, applied{layer: target[j], key: migrate.KeyOf(target[j])})
@@ -346,9 +328,57 @@ func (a *appFixture) plan(ctx context.Context, target []migrate.Layer, tolerance
 	return nil
 }
 
-func (a *appFixture) step(direction string, l migrate.Layer, fn func(context.Context) error) error {
+// matchedPrefix counts the leading applied layers that are already the ones
+// target wants, by name AND by key — a layer whose content changed keeps its
+// name, so the key is what stops a stale layer being mistaken for a match.
+// Called with stateMu held.
+func (a *appFixture) matchedPrefix(target []migrate.Layer) int {
+	i := 0
+	for i < len(a.applied) && i < len(target) &&
+		a.applied[i].layer.Name() == target[i].Name() &&
+		a.applied[i].key == migrate.KeyOf(target[i]) {
+		i++
+	}
+	return i
+}
+
+// makePristine discards the dirt a previous test left, and reports how many
+// leading layers survived it. Reset keeps the bottom layer where it can,
+// which is the cheap path; otherwise everything comes down. Called with
+// stateMu held.
+func (a *appFixture) makePristine(ctx context.Context, matched int) (int, error) {
+	if r, ok := a.applied[0].layer.(migrate.Resettable); matched >= 1 && ok {
+		if err := a.step(ctx, "reset", a.applied[0].layer, r.Reset); err != nil {
+			return matched, err
+		}
+		a.applied = a.applied[:1]
+		return 1, nil
+	}
+	if err := a.downTo(ctx, 0); err != nil {
+		return matched, err
+	}
+	return 0, nil
+}
+
+// downTo takes applied layers off the top until only `keep` remain, so a
+// failure part-way leaves a.applied describing what is really on the store.
+// Called with stateMu held.
+func (a *appFixture) downTo(ctx context.Context, keep int) error {
+	for j := len(a.applied) - 1; j >= keep; j-- {
+		if err := a.step(ctx, "down", a.applied[j].layer, a.applied[j].layer.Down); err != nil {
+			return err
+		}
+		a.applied = a.applied[:j]
+	}
+	return nil
+}
+
+func (a *appFixture) step(ctx context.Context, direction string, l migrate.Layer, fn func(context.Context) error) error {
 	start := time.Now()
-	if err := fn(context.Background()); err != nil {
+	// The caller's context, not a fresh Background: a layer that honours
+	// cancellation should stop when the run it belongs to is cancelled, and a
+	// deadline on the plan should reach the statements it runs.
+	if err := fn(ctx); err != nil {
 		return fmt.Errorf("layer %q %s: %w", l.Name(), direction, err)
 	}
 	log.Info().Str("component", "gorm").Str("fixture", a.name).Str("layer", l.Name()).Str("direction", direction).

@@ -34,12 +34,18 @@ func TestWithDDLLockSerializes(t *testing.T) {
 				runs    atomic.Int32
 				wg      sync.WaitGroup
 			)
+			// Errors come back through a channel rather than a require inside
+			// the worker: require calls FailNow, which is runtime.Goexit, and
+			// only the test goroutine may do that. From a worker it kills the
+			// worker and reports "executed panic(nil) or runtime.Goexit"
+			// instead of the error that actually happened.
+			errs := make(chan error, workers)
 
 			for range workers {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					require.NoError(t, datagorm.WithDDLLock(v.host, v.port, func() error {
+					errs <- datagorm.WithDDLLock(v.host, v.port, func() error {
 						if inside.Add(1) > 1 {
 							overlap.Store(true)
 						}
@@ -48,10 +54,14 @@ func TestWithDDLLockSerializes(t *testing.T) {
 						inside.Add(-1)
 						runs.Add(1)
 						return nil
-					}))
+					})
 				}()
 			}
 			wg.Wait()
+			close(errs)
+			for err := range errs {
+				require.NoError(t, err)
+			}
 
 			require.False(t, overlap.Load(), "two holders were inside the lock at once")
 			require.EqualValues(t, workers, runs.Load(), "every worker must run")
@@ -75,13 +85,19 @@ func TestWithDDLLockIsPerTarget(t *testing.T) {
 	}()
 	<-held
 
+	// The error is carried out rather than required in here: a require in a
+	// goroutine Goexits it, `done` never closes, and the timeout below then
+	// blames the lock for what was actually an error. The write is ordered
+	// before close(done) and read after it, so there is no race.
+	var lockErr error
 	go func() {
-		require.NoError(t, datagorm.WithDDLLock("target-b", 5433, func() error { return nil }))
+		lockErr = datagorm.WithDDLLock("target-b", 5433, func() error { return nil })
 		close(done)
 	}()
 
 	select {
 	case <-done:
+		require.NoError(t, lockErr)
 	case <-time.After(5 * time.Second):
 		t.Fatal("a different target blocked on this one's lock")
 	}
@@ -95,12 +111,14 @@ func TestWithDDLLockReleasesOnError(t *testing.T) {
 	require.ErrorIs(t, datagorm.WithDDLLock("target-err", 5433, func() error { return boom }), boom)
 
 	done := make(chan struct{})
+	var lockErr error
 	go func() {
-		require.NoError(t, datagorm.WithDDLLock("target-err", 5433, func() error { return nil }))
+		lockErr = datagorm.WithDDLLock("target-err", 5433, func() error { return nil })
 		close(done)
 	}()
 	select {
 	case <-done:
+		require.NoError(t, lockErr)
 	case <-time.After(5 * time.Second):
 		t.Fatal("the lock was not released after fn returned an error")
 	}
