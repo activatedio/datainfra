@@ -177,12 +177,21 @@ caller that wants the whole result follows `NextPageToken` — or lets
 - A nil `ListParams.PageParams`, or a `Count <= 0`, means the first page of
   `DefaultPageSize` (100) rows. `NextPageToken` is set whenever more rows
   remain, so an empty `ListParams{}` is *not* "everything"; it is page one.
-- Pagination runs a forward cursor over the entity's `KeyColumns` (one for
+- Pagination runs a cursor over the entity's `KeyColumns` (one for
   single keys, several for composite keys), ordered ascending, with the
   token decoded as a strict lower bound `(cols) > (vals)`. `DoList` fetches
   `Count + 1` rows, truncates to `Count`, and emits the last row's key as
   the token. Tokens are opaque to clients. The generator emits
   `KeyColumns`/`KeyAccessor` for every keyed entity.
+- `PageParams.Descending` reverses it: key columns ordered `DESC`, token
+  applied as a strict upper bound `(cols) < (vals)`. One field rather than
+  two because the order and the comparison are halves of one mechanism — an
+  `ORDER BY DESC` paged with a `>` bound re-serves the same page forever. It
+  is what a time-ordered table wants when the question is "what happened
+  most recently": where the key is minted in time order, key-descending and
+  newest-first are the same traversal. A token is only valid in the
+  direction it was minted in; a direction change is a new listing, not a
+  token to replay.
 - A template **without** key columns cannot hand out tokens. It still fetches
   `Count + 1`; if the extra row materializes `DoList` returns
   `gorm.UnpagedOverflowError` rather than a silently truncated list, and it

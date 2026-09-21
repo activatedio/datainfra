@@ -155,3 +155,74 @@ func TestKeylessTemplate_OverflowIsAnError(t *testing.T) {
 		a.Contains(err.Error(), "invalid page token")
 	})
 }
+
+// Descending pages the same rows from the other end.
+//
+// The two halves have to move together: an ORDER BY DESC paged with the
+// ascending ">" bound would hand back the same page forever, so this walks a
+// full descending traversal and asserts it is the ascending one reversed —
+// which is only true if the order and the cursor agree.
+func TestThemeRepository_DescendingPagesFromTheOtherEnd(t *testing.T) {
+	datatesting.Run(t, AppFixtures, func(t *testing.T, cp datatesting.ContextProvider, unit repository.ThemeRepository) {
+		a := assert.New(t)
+		r := require.New(t)
+
+		const n = 25
+		ctx := seedThemes(t, cp, unit, n)
+
+		page1, err := unit.ListAll(ctx, data.ListParams{
+			PageParams: &data.PageParams{Count: 10, Descending: true},
+		})
+		r.NoError(err)
+		r.Len(page1.List, 10)
+		r.NotEmpty(page1.NextPageToken)
+
+		// Highest key first, and descending within the page.
+		a.Equal(fmt.Sprintf("theme-%04d", n-1), page1.List[0].Name)
+		a.Greater(page1.List[0].Name, page1.List[9].Name)
+
+		var walked []string
+		token := ""
+		for {
+			got, err := unit.ListAll(ctx, data.ListParams{
+				PageParams: &data.PageParams{Count: 10, Descending: true, PageToken: token},
+			})
+			r.NoError(err)
+			for _, th := range got.List {
+				walked = append(walked, th.Name)
+			}
+			if got.NextPageToken == "" {
+				break
+			}
+			token = got.NextPageToken
+			r.LessOrEqual(len(walked), n, "the cursor is not advancing; it is re-serving a page")
+		}
+
+		r.Len(walked, n)
+		for i := 0; i < n; i++ {
+			a.Equal(fmt.Sprintf("theme-%04d", n-1-i), walked[i])
+		}
+	})
+}
+
+// The default is unchanged: a zero PageParams still pages forward, so no
+// existing caller moves.
+func TestThemeRepository_AscendingIsStillTheDefault(t *testing.T) {
+	datatesting.Run(t, AppFixtures, func(t *testing.T, cp datatesting.ContextProvider, unit repository.ThemeRepository) {
+		a := assert.New(t)
+		r := require.New(t)
+
+		ctx := seedThemes(t, cp, unit, 5)
+
+		got, err := unit.ListAll(ctx, data.ListParams{PageParams: &data.PageParams{Count: 3}})
+		r.NoError(err)
+		r.Len(got.List, 3)
+		a.Equal("theme-0000", got.List[0].Name)
+		a.Equal("theme-0002", got.List[2].Name)
+
+		nilParams, err := unit.ListAll(ctx, data.ListParams{})
+		r.NoError(err)
+		r.Len(nilParams.List, 5)
+		a.Equal("theme-0000", nilParams.List[0].Name)
+	})
+}

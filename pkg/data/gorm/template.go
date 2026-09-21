@@ -230,11 +230,20 @@ func (c *templateImpl[E, I]) DoFind(ctx context.Context, delegate func(db *gorm.
 // Every call returns a page. A nil params.PageParams means the first page of
 // DefaultPageSize rows; a Count of zero or less means DefaultPageSize as
 // well. When the template was configured with KeyColumns + KeyAccessor,
-// DoList paginates with a forward cursor over the key columns: it orders by
-// the key ascending, applies PageToken as a strict lower bound, fetches one
-// extra row to detect overflow, and populates NextPageToken on the response
-// when more rows remain. Tokens are opaque base64 strings; callers should
-// treat them as cookies. A result with an empty NextPageToken is complete.
+// DoList paginates with a cursor over the key columns: it orders by the key,
+// applies PageToken as a strict bound, fetches one extra row to detect
+// overflow, and populates NextPageToken on the response when more rows
+// remain. Tokens are opaque base64 strings; callers should treat them as
+// cookies. A result with an empty NextPageToken is complete.
+//
+// The cursor runs forward — key ascending, token as a lower bound — unless
+// PageParams.Descending is set, which orders the key descending and applies
+// the token as an upper bound. The two move together by construction: the
+// order and the comparison are halves of one mechanism, and an ORDER BY DESC
+// paged with a ">" bound returns the same rows forever. Descending is what a
+// time-ordered table wants when the caller is asking what happened most
+// recently, since a key minted in time order makes newest-first and
+// key-descending the same thing.
 //
 // A template without key columns cannot produce a token. It still fetches
 // one row past the page; if that row materializes DoList returns
@@ -268,7 +277,7 @@ func (c *templateImpl[E, I]) DoList(ctx context.Context, //nolint:gocyclo // pag
 		if err != nil {
 			return nil, err
 		}
-		tx = tx.Order(strings.Join(c.keyColumns, ", "))
+		tx = tx.Order(c.keyOrder(params.PageParams))
 	} else if params.PageParams != nil && params.PageParams.PageToken != "" {
 		return nil, fmt.Errorf("invalid page token: table %q has no key columns to page over", c.table)
 	}
@@ -358,7 +367,29 @@ func (c *templateImpl[E, I]) applyPageCursor(tx *gorm.DB, pp *data.PageParams) (
 	for i, v := range values {
 		args[i] = v
 	}
-	return tx.Where(fmt.Sprintf("%s > %s", cols, placeholders), args...), nil
+	// Strict, and in the direction the page is ordered: the bound excludes the
+	// row the token was minted from, which is the last row the caller already
+	// has.
+	cmp := ">"
+	if pp.Descending {
+		cmp = "<"
+	}
+	return tx.Where(fmt.Sprintf("%s %s %s", cols, cmp, placeholders), args...), nil
+}
+
+// keyOrder renders the ORDER BY clause for a paged read. Every key column
+// takes the same direction: the cursor is a row-value comparison over the
+// whole key, so a mixed order would not correspond to any bound that could
+// page it.
+func (c *templateImpl[E, I]) keyOrder(pp *data.PageParams) string {
+	if pp == nil || !pp.Descending {
+		return strings.Join(c.keyColumns, ", ")
+	}
+	desc := make([]string, len(c.keyColumns))
+	for i, col := range c.keyColumns {
+		desc[i] = col + " DESC"
+	}
+	return strings.Join(desc, ", ")
 }
 
 func (c *templateImpl[E, I]) encodeCursor(values []any) (string, error) {

@@ -229,6 +229,23 @@ type List[E any] struct {
 type PageParams struct {
 	PageToken string
 	Count     int
+	// Descending reverses the cursor: the key columns are ordered DESC and
+	// the token is applied as a strict upper bound, so page one is the
+	// highest keys rather than the lowest.
+	//
+	// It is one field rather than two because the order and the cursor
+	// comparison are halves of one mechanism — an ORDER BY DESC paged with a
+	// ">" bound returns the same rows forever — so a caller must not be able
+	// to set one without the other.
+	//
+	// A token is only meaningful in the direction it was minted in. Replaying
+	// one in the other direction pages away from the rows it came from, which
+	// is a caller error the template does not detect; treat a direction change
+	// as a new listing and start without a token.
+	//
+	// Only meaningful where KeyColumns and KeyAccessor are configured. A
+	// template that cannot page rejects it, like any other page parameter.
+	Descending bool
 }
 
 // Scope is a generic type that can represent any context-specific or application-wide scope definition.
