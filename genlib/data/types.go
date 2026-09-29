@@ -166,3 +166,10 @@ var (
 		OperationFindByKey, OperationList, OperationCreate, OperationUpdate, OperationDelete,
 	)
 )
+
+// KeyField is the entity's field tagged `data:"key"`, found through embedded
+// structs; nil if it has none. Another generator reads an entity's key the
+// way the repositories do by accessing this field.
+func KeyField(t reflect.Type) *reflect.StructField {
+	return getKey(t)
+}

@@ -14,6 +14,7 @@ genlib/           # build-time code generation
     data.go       # shared handler registry + Types/Crud/Search/Associate/FilterKeys/ListByAssociatedKey markers
     types.go      # data.Entry, JenHelper, Key (key-field reflection)
     wiring.go     # data.Wiring abstraction + data.FXWiring impl (cross-flavor)
+    outer/        # outer proxy chain generator (elapsed, validator, diff) over generated interfaces
     gorm/
       gorm.go     # gorm flavor handlers (DirectoryMain, FileMain, marker types, addBaseHandlers ... addListByAssociatedKeyHandlers)
       types.go    # gorm-specific JenHelper extension (TablePrefix, TableName, ContextScopeCode)
@@ -28,6 +29,7 @@ pkg/              # runtime types imported by generated code
       crud_template.go    # CrudTemplate impl (Find/List/Create/Update/Delete/ExistsByKey)
       search_template.go  # PredicateBinder + Postgres/Like/Dialect binders, SearchPredicateBinding
       association_template.go, filter_keys_template.go
+    outer/        # runtime for the outer chain: MethodMetadata, Changelog/Diff, DiffSink, TagInner
   data/testing/   # DoTestCrud, DoTestSearch, DoTestFilterKeys harnesses
 examples/data/    # end-to-end example
   model/          # plain Go entities (Product, Category, Location, Theme)
@@ -141,6 +143,36 @@ with no fx import and skips `index_gen.go` entirely.
 When the gocql / elasticsearch flavors in `datainfra-gocql` adopt
 `data.Wiring` (planned follow-up), each will plug in its own per-flavor
 seed providers (e.g. `gocql.NewClusterConfig`, `elasticsearch.NewTypedClient`).
+
+## Outer proxy chain
+
+`genlib/data/outer` generates, per repository interface, a chain of proxies
+that implement the interface and delegate inward, plus a constructor and an
+`Index()` that provides the chain in place of the flavor's repository:
+
+- `outer.Elapsed` — logs each call's duration at debug.
+- `outer.Validator` — calls the entity's `Validate() error` before Create and
+  Update; generation panics if the entity has none.
+- `outer.Diff` — after Create, Update, Delete and DeleteEntity, diffs the
+  stored row (read with FindByKey before the write) against the written one
+  and hands the changelog to the graph's `outer.DiffSink`
+  (`pkg/data/outer`), or `DefaultDiffSink` (debug log) if none is provided.
+  The key is the entity's `data:"key"` field; fields tagged
+  `audit:"redact"` are named in `MethodMetadata.Redact`. The sink runs in
+  the write's context, so a sink writing to the same database joins its
+  transaction. Associate methods pass through unrecorded.
+
+`outer.Standard` is elapsed → validator → inner; `outer.Audited` adds diff
+innermost (elapsed → validator → diff → inner), so a refused write records
+nothing. A proxy slice is innermost first.
+
+It reads the interfaces by reflection, so it is a second generator step run
+after the first (`examples/data/gen/outer`). The flavor's index registers
+its repositories under `outer.InnerName` with
+`data.FXWiring(name, data.WithRepositoryName(outer.InnerName))`; the chain
+takes them by that name. `outer.TagInner` does the same by hand. The
+example's test (`examples/data/repository/outer`) runs the chain over an
+in-memory inner repository.
 
 ## Search bindings
 

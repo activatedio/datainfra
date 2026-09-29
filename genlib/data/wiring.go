@@ -27,15 +27,48 @@ type Wiring interface {
 	EmitIndex(f *jen.File, provideRefs []jen.Code)
 }
 
+// RepositoryWiring is a Wiring that registers a flavor's repository
+// constructors differently from its seed providers (NewDB and the like). A
+// flavor's directory handler passes each repository constructor through
+// WrapRepository before handing the list to EmitIndex.
+type RepositoryWiring interface {
+	Wiring
+	WrapRepository(ctor jen.Code) jen.Code
+}
+
+// FXOption configures FXWiring.
+type FXOption func(*fxWiring)
+
+// WithRepositoryName registers every repository constructor under an fx
+// name, leaving the seed providers unnamed. An outer proxy chain
+// (genlib/data/outer) takes the repositories by that name — outer.InnerName —
+// and provides the interfaces unnamed in their place.
+func WithRepositoryName(name string) FXOption {
+	return func(w *fxWiring) { w.repositoryName = name }
+}
+
 // FXWiring returns a Wiring that integrates generated repositories with
 // go.uber.org/fx. moduleName is the name passed to fx.Module in the
 // generated Index() function.
-func FXWiring(moduleName string) Wiring {
-	return &fxWiring{moduleName: moduleName}
+func FXWiring(moduleName string, opts ...FXOption) Wiring {
+	w := &fxWiring{moduleName: moduleName}
+	for _, o := range opts {
+		o(w)
+	}
+	return w
 }
 
 type fxWiring struct {
-	moduleName string
+	moduleName     string
+	repositoryName string
+}
+
+func (w *fxWiring) WrapRepository(ctor jen.Code) jen.Code {
+	if w.repositoryName == "" {
+		return ctor
+	}
+	return jen.Qual(ImportFX, "Annotate").Call(ctor,
+		jen.Qual(ImportFX, "ResultTags").Call(jen.Lit(`name:"`+w.repositoryName+`"`)))
 }
 
 func (w *fxWiring) PrependCtorParamsFields() []jen.Code {

@@ -147,6 +147,16 @@ type Associate struct {
 	ExecuteAdd    jen.Code
 }
 
+// repositoryRef is an entry's constructor as the index registers it, wrapped
+// by the wiring if it registers repositories apart (data.RepositoryWiring).
+func repositoryRef(w data.Wiring, e data.Entry) jen.Code {
+	var ref jen.Code = jen.Id(fmt.Sprintf("New%sRepository", e.Type.Name()))
+	if rw, ok := w.(data.RepositoryWiring); ok {
+		ref = rw.WrapRepository(ref)
+	}
+	return ref
+}
+
 // addBaseHandlers configures and registers default directory, file, and statement handlers in the provided HandlerEntries.
 func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 
@@ -171,7 +181,7 @@ func addBaseHandlers(he *gen.HandlerEntries) *gen.HandlerEntries {
 				jen.Qual(ImportThis, "NewContextBuilder"),
 			)
 			for _, e := range m.Entries {
-				provideRefs = append(provideRefs, jen.Id(fmt.Sprintf("New%sRepository", e.Type.Name())))
+				provideRefs = append(provideRefs, repositoryRef(m.Wiring, e))
 			}
 			gen.WithFile(m.Package, filepath.Join(dirPath, "index_gen.go"), func(file *jen.File) {
 				m.Wiring.EmitIndex(file, provideRefs)
