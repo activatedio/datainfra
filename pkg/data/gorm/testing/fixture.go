@@ -473,6 +473,11 @@ func NewStaticGormTestingConfig(ownerConfig, appConfig *gorm2.Config) func() Gor
 					Username:                 ownerConfig.Username,
 					Password:                 ownerConfig.Password,
 					Name:                     appConfig.Name,
+					SSLMode:                  ownerConfig.SSLMode,
+					SSLRootCert:              ownerConfig.SSLRootCert,
+					// The app's schema: its migrations, and their version
+					// tables, land where the app reads them.
+					Schema: appConfig.Schema,
 				},
 			},
 		}
