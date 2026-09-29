@@ -19,4 +19,11 @@ type Config struct {
 	// SSLRootCert is the path to the CA bundle that verifies the server, for
 	// the verify-* modes.
 	SSLRootCert string
+	// Schema is the Postgres schema the connection works in. It is sent as
+	// the search_path startup parameter, so every pooled connection resolves
+	// unqualified names there, goose's version table included, and a
+	// service sharing a database with others sees only its own tables. Empty
+	// is the server's default (public). A lower-case SQL identifier. Ignored
+	// by sqlite, where a database is a file of its own.
+	Schema string
 }

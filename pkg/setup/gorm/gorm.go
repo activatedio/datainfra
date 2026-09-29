@@ -38,8 +38,59 @@ func NewSetup(params SetupParams) setup.Setup {
 	}
 }
 
-// setupPostgres sets up a PostgreSQL database by initializing, checking existence, creating a user, database, and permissions.
+// setupPostgres sets up a PostgreSQL database by initializing, checking
+// existence, creating a user, database, and permissions, and then the app's
+// schema when it names one.
+//
+// The schema step runs whether or not the database already existed: several
+// services share one database, each in a schema of its own, and the second to
+// start finds the database there and still needs its schema.
 func (g *gormSetup) setupPostgres(params setup.Params) error {
+	if err := g.setupPostgresDatabase(params); err != nil {
+		return err
+	}
+	return g.ensureSchema()
+}
+
+// ensureSchema creates the app's schema, owned by the app's role, if it is
+// not there. Idempotent, and safe when replicas race to create it.
+func (g *gormSetup) ensureSchema() error {
+	schema := g.appConfig.Schema
+	if schema == "" {
+		return nil
+	}
+	if err := datagorm.ValidateSchema(schema); err != nil {
+		return err
+	}
+	log.Info().Str("schema", schema).Msg("ensuring schema")
+	db, err := datagorm.NewDB(&datagorm.Config{
+		Dialect:     g.ownerConfig.Dialect,
+		Host:        g.ownerConfig.Host,
+		Port:        g.ownerConfig.Port,
+		Username:    g.ownerConfig.Username,
+		Password:    g.ownerConfig.Password,
+		Name:        g.appConfig.Name,
+		SSLMode:     g.ownerConfig.SSLMode,
+		SSLRootCert: g.ownerConfig.SSLRootCert,
+	})
+	if err != nil {
+		return err
+	}
+	if sDB, err := db.DB(); err == nil {
+		defer func() { _ = sDB.Close() }()
+	}
+	// Owned by the app's role, so it may create and alter its own tables
+	// without grants; an owner connecting as the app owns it either way.
+	err = datagorm.ExecWithSerializationRetry(db, fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %s AUTHORIZATION %s", schema, g.appConfig.Username))
+	if err != nil && !datagorm.IsDuplicateObject(err) {
+		return err
+	}
+	return nil
+}
+
+// setupPostgresDatabase creates the database, and the app's role and grants
+// when the app is not the owner.
+func (g *gormSetup) setupPostgresDatabase(params setup.Params) error {
 
 	if err := g.init(g.ownerConfig); err != nil {
 		return err

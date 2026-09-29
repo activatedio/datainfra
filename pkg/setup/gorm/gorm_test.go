@@ -203,3 +203,65 @@ func TestTeardown_Sqlite(t *testing.T) {
 		})
 	}
 }
+
+// ownerFromEnv is the owner the Postgres tests connect as:
+// DATAINFRA_PG_{HOST,PORT,USER,PASSWORD}, defaulting to the values
+// TestSetup_Success uses.
+func ownerFromEnv() datagorm.Config {
+	env := func(k, def string) string {
+		if v := os.Getenv(k); v != "" {
+			return v
+		}
+		return def
+	}
+	port := 5432
+	_, _ = fmt.Sscanf(env("DATAINFRA_PG_PORT", "5432"), "%d", &port)
+	return datagorm.Config{Dialect: "postgres", Host: env("DATAINFRA_PG_HOST", "127.0.0.1"), Port: port,
+		Username: env("DATAINFRA_PG_USER", "postgres"), Password: env("DATAINFRA_PG_PASSWORD", "supersecret"), Name: "postgres"}
+}
+
+// Two apps in one database, each in its own schema: the second finds the
+// database there and still gets its schema, and neither sees the other's
+// tables.
+func TestSetup_SchemaPerApp(t *testing.T) {
+	r := require.New(t)
+	ctx := context.Background()
+	owner := ownerFromEnv()
+	if db, err := datagorm.NewDB(&owner); err != nil {
+		t.Skipf("no postgres: %v", err)
+	} else if sdb, _ := db.DB(); sdb.Ping() != nil {
+		t.Skip("no postgres")
+	}
+
+	name := fmt.Sprintf("schema_%d", time.Now().UnixMilli())
+	app := func(schema string) *datagorm.Config {
+		return &datagorm.Config{Dialect: "postgres", Host: owner.Host, Port: owner.Port,
+			Username: owner.Username, Password: owner.Password, Name: name, Schema: schema}
+	}
+	fleet := gorm.NewSetup(gorm.SetupParams{OwnerConfig: &gorm.OwnerGormConfig{Config: owner}, AppConfig: app("fleet")})
+	signs := gorm.NewSetup(gorm.SetupParams{OwnerConfig: &gorm.OwnerGormConfig{Config: owner}, AppConfig: app("signs")})
+	defer func() { r.NoError(fleet.Teardown(ctx)) }()
+
+	r.NoError(fleet.Setup(ctx, setup.Params{}))
+	r.NoError(signs.Setup(ctx, setup.Params{}), "the second app finds the database and still gets its schema")
+	r.NoError(fleet.Setup(ctx, setup.Params{}), "idempotent")
+
+	fdb, err := datagorm.NewDB(app("fleet"))
+	r.NoError(err)
+	r.NoError(fdb.Exec("CREATE TABLE devices (id text)").Error)
+	var where string
+	r.NoError(fdb.Raw("SELECT table_schema FROM information_schema.tables WHERE table_name = 'devices'").Scan(&where).Error)
+	r.Equal("fleet", where)
+
+	sdb, err := datagorm.NewDB(app("signs"))
+	r.NoError(err)
+	r.Error(sdb.Exec("SELECT * FROM devices").Error, "another schema's table is invisible")
+	r.NoError(sdb.Exec("CREATE TABLE devices (id text)").Error, "and its name is free")
+
+	if s, err := fdb.DB(); err == nil {
+		_ = s.Close()
+	}
+	if s, err := sdb.DB(); err == nil {
+		_ = s.Close()
+	}
+}

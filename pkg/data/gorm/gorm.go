@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
@@ -38,7 +39,21 @@ func postgresDSN(config *Config) string {
 	if config.SSLRootCert != "" {
 		dsn += " sslrootcert=" + config.SSLRootCert
 	}
+	if config.Schema != "" {
+		dsn += " search_path=" + config.Schema
+	}
 	return dsn
+}
+
+var schemaName = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,62}$`)
+
+// ValidateSchema reports whether a schema name is safe to put in a DSN and
+// in DDL unquoted: a lower-case SQL identifier of at most 63 bytes.
+func ValidateSchema(schema string) error {
+	if schema != "" && !schemaName.MatchString(schema) {
+		return fmt.Errorf("schema %q: want a lower-case SQL identifier ([a-z_][a-z0-9_]*, at most 63 bytes)", schema)
+	}
+	return nil
 }
 
 // NewDB opens a gorm connection for the configured dialect.
@@ -49,6 +64,9 @@ func NewDB(config *Config) (*gorm.DB, error) {
 	switch config.Dialect {
 
 	case DialectPostgres:
+		if err := ValidateSchema(config.Schema); err != nil {
+			return nil, err
+		}
 		dialector = postgres.New(postgres.Config{
 			DSN: postgresDSN(config),
 		})
