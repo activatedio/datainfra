@@ -98,7 +98,7 @@ func (g *gormSetup) setupPostgresDatabase(params setup.Params) error {
 
 	defer g.closeOwnerDB()
 
-	log.Info().Interface("appConfig", g.appConfig).Msg("setup")
+	log.Info().Object("appConfig", g.appConfig).Msg("setup")
 
 	exists, name, err := g.databaseExists()
 
@@ -176,7 +176,7 @@ func (g *gormSetup) teardownPostgres() error {
 
 	defer g.closeOwnerDB()
 
-	log.Info().Interface("appConfig", g.appConfig).Msg("teardown")
+	log.Info().Object("appConfig", g.appConfig).Msg("teardown")
 
 	if err := g.dropDatabase(); err != nil {
 		return err
