@@ -1,6 +1,10 @@
 package gorm
 
-import "github.com/rs/zerolog"
+import (
+	"time"
+
+	"github.com/rs/zerolog"
+)
 
 // Config defines the configuration for a gorm database connection.
 type Config struct {
@@ -12,7 +16,16 @@ type Config struct {
 	Username                 string
 	Password                 string
 	Name                     string
-	MaxIdleConns             *int
+	// The pool fields are applied when set and leave database/sql's default
+	// when nil (unlimited open connections, 2 idle, no idle or lifetime
+	// limit). A caller with a burst of concurrent reads wants all four: with
+	// the default 2 idle connections every request past the second opens a
+	// new session and closes it again. SQLite always runs one open
+	// connection, whatever MaxOpenConns says.
+	MaxIdleConns    *int
+	MaxOpenConns    *int
+	ConnMaxIdleTime *time.Duration
+	ConnMaxLifetime *time.Duration
 	// SSLMode is libpq's sslmode (disable, require, verify-ca, verify-full).
 	// Empty leaves the driver default. It is connection configuration rather
 	// than process environment (PGSSLMODE) so two pools in one process can
@@ -41,6 +54,18 @@ func (c Config) MarshalZerologObject(e *zerolog.Event) {
 		Str("name", c.Name).Str("schema", c.Schema).Str("sslMode", c.SSLMode).Bool("sqlLogging", c.EnableSQLLogging)
 	if c.Password != "" {
 		e.Str("password", redactedPassword)
+	}
+	if c.MaxIdleConns != nil {
+		e.Int("maxIdleConns", *c.MaxIdleConns)
+	}
+	if c.MaxOpenConns != nil {
+		e.Int("maxOpenConns", *c.MaxOpenConns)
+	}
+	if c.ConnMaxIdleTime != nil {
+		e.Dur("connMaxIdleTime", *c.ConnMaxIdleTime)
+	}
+	if c.ConnMaxLifetime != nil {
+		e.Dur("connMaxLifetime", *c.ConnMaxLifetime)
 	}
 }
 

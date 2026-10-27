@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/postgres"
@@ -96,20 +97,43 @@ func NewDB(config *Config) (*gorm.DB, error) {
 		return nil, err
 	}
 
-	if config.MaxIdleConns != nil {
-		_db.SetMaxIdleConns(*config.MaxIdleConns)
-	}
-
-	switch config.Dialect {
-	case DialectPostgres:
-	case DialectSqlite:
-		_db.SetMaxOpenConns(1)
-	default:
-		panic("unexpected dialect " + config.Dialect)
-	}
+	applyPool(_db, config)
 
 	return db, err
 
+}
+
+// pool is the part of *sql.DB a Config's pool fields set.
+type pool interface {
+	SetMaxIdleConns(n int)
+	SetMaxOpenConns(n int)
+	SetConnMaxIdleTime(d time.Duration)
+	SetConnMaxLifetime(d time.Duration)
+}
+
+// applyPool sets each pool field the Config names and leaves the rest at
+// database/sql's default. SQLite has one writer, so it runs one open
+// connection regardless.
+func applyPool(p pool, config *Config) {
+	if config.MaxIdleConns != nil {
+		p.SetMaxIdleConns(*config.MaxIdleConns)
+	}
+	if config.ConnMaxIdleTime != nil {
+		p.SetConnMaxIdleTime(*config.ConnMaxIdleTime)
+	}
+	if config.ConnMaxLifetime != nil {
+		p.SetConnMaxLifetime(*config.ConnMaxLifetime)
+	}
+	switch config.Dialect {
+	case DialectPostgres:
+		if config.MaxOpenConns != nil {
+			p.SetMaxOpenConns(*config.MaxOpenConns)
+		}
+	case DialectSqlite:
+		p.SetMaxOpenConns(1)
+	default:
+		panic("unexpected dialect " + config.Dialect)
+	}
 }
 
 type contextKey struct {

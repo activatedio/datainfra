@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 )
@@ -34,5 +35,16 @@ func TestConfigLogsWithoutItsPassword(t *testing.T) {
 	log.Info().Object("appConfig", Config{Host: "pg"}).Msg("setup")
 	if strings.Contains(buf.String(), "password") {
 		t.Fatalf("an empty password was logged as one: %s", buf.String())
+	}
+	if strings.Contains(buf.String(), "Conns") || strings.Contains(buf.String(), "connMax") {
+		t.Fatalf("an unset pool field was logged: %s", buf.String())
+	}
+	buf.Reset()
+	idle, open, idleTime, lifetime := 10, 25, 5*time.Minute, 30*time.Minute
+	log.Info().Object("appConfig", Config{MaxIdleConns: &idle, MaxOpenConns: &open, ConnMaxIdleTime: &idleTime, ConnMaxLifetime: &lifetime}).Msg("setup")
+	for _, want := range []string{`"maxIdleConns":10`, `"maxOpenConns":25`, `"connMaxIdleTime":300000`, `"connMaxLifetime":1800000`} {
+		if !strings.Contains(buf.String(), want) {
+			t.Fatalf("%s is not logged: %s", want, buf.String())
+		}
 	}
 }
