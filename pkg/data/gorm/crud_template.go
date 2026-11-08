@@ -129,7 +129,11 @@ func (c *crudTemplateImpl[E, I, K]) Update(ctx context.Context, entity E) error 
 	if err != nil {
 		return err
 	}
-	return db.Table(c.template.GetTable()).Save(internal).Error
+	// Save's UPDATE is keyed by the entity's gorm primary key, which on a
+	// scoped entity leaves out the scope column; without the scope it matches
+	// the same key under every scope.
+	db = c.template.ApplyContextScopeQueryBuilder(ctx, db.Table(c.template.GetTable()), data.FetchTypeDetail)
+	return db.Save(internal).Error
 }
 
 // Delete removes an entity of type E from the database based on the provided key K, using the findBuilder logic.
@@ -138,19 +142,22 @@ func (c *crudTemplateImpl[E, I, K]) Delete(ctx context.Context, key K) error {
 	if err != nil {
 		return err
 	}
-	db = db.Table(c.template.GetTable())
+	// Scoped as FindByKey and ExistsByKey are: the find builder names the key
+	// alone, which repeats across scopes.
+	db = c.template.ApplyContextScopeQueryBuilder(ctx, db.Table(c.template.GetTable()), data.FetchTypeDetail)
 	return c.findBuilder(ctx, db, key).Delete(new(E)).Error
 }
 
 // DeleteEntity removes the provided entity of type E from the database and returns an error if the operation fails.
 func (c *crudTemplateImpl[E, I, K]) DeleteEntity(ctx context.Context, entity E) error {
-	// TODO - need to validate access
-	// TODO - unit test
 	db, err := GetDB(ctx)
 	if err != nil {
 		return err
 	}
-	return db.Table(c.template.GetTable()).Delete(entity).Error
+	// The entity's gorm primary key leaves out the scope column on a scoped
+	// entity, so the scope is what keeps the delete to the caller's row.
+	db = c.template.ApplyContextScopeQueryBuilder(ctx, db.Table(c.template.GetTable()), data.FetchTypeDetail)
+	return db.Delete(entity).Error
 }
 
 // FindPredicate defines a predicate for finding entities based on a column and accessor function.
