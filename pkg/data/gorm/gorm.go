@@ -79,6 +79,7 @@ func NewDB(config *Config) (*gorm.DB, error) {
 
 	db, err := gorm.Open(dialector, &gorm.Config{
 		SkipDefaultTransaction: !config.EnableDefaultTransaction,
+		QueryFields:            config.QueryFields,
 		Logger: func() logger.Interface {
 			if config.EnableSQLLogging {
 				return logger.Default.LogMode(logger.Info)

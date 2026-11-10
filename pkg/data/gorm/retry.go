@@ -42,6 +42,36 @@ func IsSerializationFailure(err error) bool {
 	}
 }
 
+// IsTransientSchemaChange reports whether err is a statement aborted by a
+// schema change made under it — a fault a new transaction clears, so the
+// owner of the transaction may replay it (kit#937):
+//
+//   - IsSerializationFailure's 40001 / YB003, YugabyteDB's "schema version
+//     mismatch for table …" among them (an in-flight statement when DDL bumps
+//     the table's schema version);
+//   - 0A000 "cached plan must not change result type": a prepared statement
+//     whose result columns an ADD COLUMN changed. pgx invalidates the cached
+//     statement on any error, so the next use re-prepares.
+//
+// A retry inside the same transaction cannot work: postgres aborts the
+// transaction on the error. Only the transaction's owner replays.
+func IsTransientSchemaChange(err error) bool {
+	if IsSerializationFailure(err) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	switch pgErr.Code {
+	case "0A000":
+		return strings.Contains(strings.ToLower(pgErr.Message), "cached plan must not change result type")
+	case "XX000":
+		return strings.Contains(strings.ToLower(pgErr.Message), "schema version mismatch")
+	}
+	return false
+}
+
 // IsNamespaceExists reports whether err is YugabyteDB complaining that the
 // underlying keyspace for a database already exists — "Keyspace 'x' already
 // exists", raised at the DocDB layer under SQLSTATE XX000 rather than

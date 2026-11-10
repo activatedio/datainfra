@@ -41,6 +41,12 @@ type Config struct {
 	// is the server's default (public). A lower-case SQL identifier. Ignored
 	// by sqlite, where a database is a file of its own.
 	Schema string
+	// QueryFields names every column in a select list instead of `*`
+	// (gorm.Config.QueryFields). An ADD COLUMN then cannot change a cached
+	// prepared statement's result type, so an older binary keeps serving
+	// while an expand migration runs (kit#937: 0A000 "cached plan must not
+	// change result type"). Off by default; a caller turns it on.
+	QueryFields bool
 }
 
 // redactedPassword stands in for a password a Config is logged with.

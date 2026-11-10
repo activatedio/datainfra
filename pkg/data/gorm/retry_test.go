@@ -163,3 +163,36 @@ func TestIsUndefinedObject(t *testing.T) {
 		})
 	}
 }
+
+// TestIsTransientSchemaChange pins kit#937's classifier: the faults a schema
+// change under a running statement leaves, which a new transaction clears.
+func TestIsTransientSchemaChange(t *testing.T) {
+	cases := map[string]struct {
+		err  error
+		want bool
+	}{
+		"serialization failure":      {err: &pgconn.PgError{Code: "40001", Message: "Restart read required"}, want: true},
+		"yugabyte concurrent update": {err: &pgconn.PgError{Code: "YB003"}, want: true},
+		"yugabyte schema version mismatch, wrapped": {
+			err:  fmt.Errorf("find issuer: %w", &pgconn.PgError{Code: "40001", Message: "schema version mismatch for table 0000400b: expected 12, got 11"}),
+			want: true,
+		},
+		"yugabyte schema version mismatch as an internal error": {
+			err:  &pgconn.PgError{Code: "XX000", Message: "Schema version mismatch for table 0000400b"},
+			want: true,
+		},
+		"cached plan must not change result type": {
+			err:  &pgconn.PgError{Code: "0A000", Message: "cached plan must not change result type"},
+			want: true,
+		},
+		"another feature-not-supported": {err: &pgconn.PgError{Code: "0A000", Message: "cannot do that"}},
+		"another internal error":        {err: &pgconn.PgError{Code: "XX000", Message: "boom"}},
+		"a constraint violation":        {err: &pgconn.PgError{Code: "23505"}},
+		"not a postgres error":          {err: errors.New("dial tcp: connection refused")},
+	}
+	for k, v := range cases {
+		t.Run(k, func(t *testing.T) {
+			assert.Equal(t, v.want, gorm.IsTransientSchemaChange(v.err))
+		})
+	}
+}
